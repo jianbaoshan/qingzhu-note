@@ -58,10 +58,12 @@ cd qingzhu-notes
 # 安装依赖
 npm install
 
-# 下载 Electron 二进制文件（国内网络推荐使用 npmmirror 镜像）
-npx electron --version
-
-# 启动开发模式
+# 启动开发模式（首次运行会自动下载 Electron 二进制文件）
+# 国内网络可先设置镜像源加速下载：
+# PowerShell:
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+# CMD:
+# set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 npm start
 ```
 
@@ -111,15 +113,16 @@ npm run pack
 # 生成 Windows 安装包
 npm run dist:win
 
-# 生成全部平台安装包
-npm run dist
 ```
 
 构建产物位于 `release/` 目录。
 
-> **注意**：构建过程中需要下载 Electron 二进制文件，国内网络建议配置镜像：
+> **注意**：构建过程中需要下载 Electron 二进制文件，国内网络建议先设置镜像源：
 > ```bash
-> npm config set registry https://registry.npmmirror.com
+> # PowerShell:
+> $env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+> # CMD:
+> set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 > ```
 
 ## 💡 使用说明

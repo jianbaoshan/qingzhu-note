@@ -20,7 +20,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "electron": "^43.4.0",
+    "electron": "^43.6.0",
     "electron-builder": "^24.9.1"
   },
   "build": {
@@ -55,7 +55,9 @@
       {
         "from": "scripts",
         "to": "scripts",
-        "filter": ["*.ps1"]
+        "filter": [
+          "*.ps1"
+        ]
       },
       {
         "from": "excel-worker.js",
