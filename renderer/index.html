@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: file:;">
+  <title>青竹笔记</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.2/marked.min.js"></script>
+</head>
+<body>
+  <!-- 顶部自绘标题栏 -->
+  <header class="titlebar" id="titlebar">
+    <div class="titlebar__drag" id="drag-region">
+      <span class="titlebar__icon">&#x1F4DD;</span>
+      <span class="titlebar__title">青竹笔记</span>
+    </div>
+    <div class="titlebar__controls">
+      <button class="titlebar__btn titlebar__btn--minimize" id="btn-minimize" aria-label="最小化">
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <rect x="1" y="4.5" width="8" height="1" fill="currentColor"/>
+        </svg>
+      </button>
+      <button class="titlebar__btn titlebar__btn--maximize" id="btn-maximize" aria-label="最大化">
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <rect x="1" y="1" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+      </button>
+      <button class="titlebar__btn titlebar__btn--close" id="btn-close" aria-label="关闭">
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/>
+          <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主布局容器 -->
+  <div class="layout">
+    <!-- 左侧栏：分类导航 -->
+    <aside class="sidebar" id="sidebar">
+      <!-- 搜索框 -->
+      <div class="sidebar__search">
+        <div class="search-box">
+          <svg class="search-box__icon" width="14" height="14" viewBox="0 0 14 14">
+            <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <line x1="9.5" y1="9.5" x2="12.5" y2="12.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <input class="search-box__input" type="text" placeholder="搜索笔记..." id="search-notes">
+        </div>
+      </div>
+
+      <!-- 新建笔记按钮 -->
+      <button class="sidebar__new-btn" id="btn-new-note">
+        <svg width="14" height="14" viewBox="0 0 14 14">
+          <line x1="7" y1="2" x2="7" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>新建笔记</span>
+      </button>
+
+      <!-- 分类列表 -->
+      <nav class="sidebar__nav">
+        <ul class="nav-list">
+          <li class="nav-list__item nav-list__item--active" data-category="all">
+            <span class="nav-list__icon">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <path d="M2 3.5C2 2.67 2.67 2 3.5 2h3.09c.46 0 .9.18 1.22.51l.68.68c.1.1.24.15.38.15H12.5c.83 0 1.5.67 1.5 1.5v7.66c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V3.5z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </span>
+            <span class="nav-list__label">我的笔记</span>
+            <span class="nav-list__badge" id="badge-all">12</span>
+          </li>
+          <li class="nav-list__item" data-category="favorites">
+            <span class="nav-list__icon">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <path d="M8 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.75l-3.52 1.85.67-3.93L2.3 5.64l3.94-.57L8 1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <span class="nav-list__label">收藏</span>
+            <span class="nav-list__badge" id="badge-favorites">3</span>
+          </li>
+          <li class="nav-list__item" data-category="recent">
+            <span class="nav-list__icon">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                <polyline points="8,4.5 8,8.5 11,10.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <span class="nav-list__label">最近打开</span>
+          </li>
+          <li class="nav-list__item nav-list__item--danger" data-category="trash">
+            <span class="nav-list__icon">
+              <svg width="16" height="16" viewBox="0 0 16 16">
+                <path d="M2.5 4h11M5.5 4V2.5A.5.5 0 016 2h4a.5.5 0 01.5.5V4M3 4v9.5A1.5 1.5 0 004.5 15h7a1.5 1.5 0 001.5-1.5V4M6.5 7v5M9.5 7v5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <span class="nav-list__label">回收站</span>
+            <span class="nav-list__badge" id="badge-trash">0</span>
+          </li>
+        </ul>
+        <div class="sidebar__add-category">
+          <button class="sidebar__add-btn" id="btn-add-category">
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <line x1="7" y1="2" x2="7" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span>新建分类</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- 底部信息 -->
+      <div class="sidebar__footer">
+        <span class="sidebar__footer-btn" id="btn-import">
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <path d="M7 1v8M3 5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M1 10v2a1 1 0 001 1h10a1 1 0 001-1v-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <span>导入文件</span>
+        </span>
+        <span class="sidebar__theme-toggle" id="theme-toggle">
+          <svg class="theme-toggle__icon" width="14" height="14" viewBox="0 0 14 14">
+            <circle cx="7" cy="7" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M7 1v1M7 12v1M1 7h1M12 7h1M2.5 2.5l.7.7M10.8 10.8l.7.7M2.5 11.5l.7-.7M10.8 3.2l.7-.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <span>切换主题</span>
+        </span>
+        <span class="sidebar__settings-btn" id="btn-settings">
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <circle cx="7" cy="7" r="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.5 2.5l1.4 1.4M10.1 10.1l1.4 1.4M2.5 11.5l1.4-1.4M10.1 3.9l1.4-1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <span>设置</span>
+        </span>
+      </div>
+    </aside>
+
+    <!-- 中间栏：笔记列表 -->
+    <main class="note-list" id="note-list">
+      <!-- 工具栏 -->
+      <div class="note-list__toolbar">
+        <div class="note-list__view-options">
+          <button class="view-btn view-btn--active" data-view="list" aria-label="列表视图">
+            <svg width="16" height="16" viewBox="0 0 16 16">
+              <rect x="1" y="1" width="14" height="3" rx="1" fill="currentColor"/>
+              <rect x="1" y="6.5" width="14" height="3" rx="1" fill="currentColor"/>
+              <rect x="1" y="12" width="14" height="3" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
+          <button class="view-btn" data-view="grid" aria-label="网格视图">
+            <svg width="16" height="16" viewBox="0 0 16 16">
+              <rect x="1" y="1" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              <rect x="9" y="1" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              <rect x="1" y="9" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              <rect x="9" y="9" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+          </button>
+        </div>
+        <div class="note-list__toolbar-actions" id="toolbar-actions">
+          <button class="toolbar-action-btn toolbar-action-btn--danger" id="btn-empty-recycle-bin" style="display:none">
+            <svg width="14" height="14" viewBox="0 0 16 16">
+              <path d="M2.5 4h11M5.5 4V2.5A.5.5 0 016 2h4a.5.5 0 01.5.5V4M3 4v9.5A1.5 1.5 0 004.5 15h7a1.5 1.5 0 001.5-1.5V4M6.5 7v5M9.5 7v5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>清空回收站</span>
+          </button>
+        </div>
+        <div class="note-list__sort">
+          <label class="sort-label" for="sort-select">排序：</label>
+          <select class="sort-select" id="sort-select">
+            <option value="updated">最近更新</option>
+            <option value="created">创建时间</option>
+            <option value="title">标题排序</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 笔记卡片列表 -->
+      <div class="note-list__cards" id="cards-container">
+        <!-- 示例笔记卡片 -->
+        <article class="note-card" data-id="1">
+          <div class="note-card__header">
+            <h3 class="note-card__title">Windows 11 开发笔记</h3>
+            <span class="note-card__favorite" aria-label="收藏">
+              <svg width="14" height="14" viewBox="0 0 16 16">
+                <path d="M8 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.75l-3.52 1.85.67-3.93L2.3 5.64l3.94-.57L8 1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+              </svg>
+            </span>
+          </div>
+          <div class="note-card__tags">
+            <span class="tag tag--blue">开发</span>
+            <span class="tag tag--green">Win11</span>
+          </div>
+          <p class="note-card__preview">Windows 11 引入了全新的 Mica 材质设计，这是一种半透明的动态材质，能够根据用户的桌面壁纸变化...</p>
+          <div class="note-card__meta">
+            <span class="note-card__date">2026-08-14</span>
+            <span class="note-card__words">1.2k 字</span>
+          </div>
+        </article>
+
+        <article class="note-card" data-id="2">
+          <div class="note-card__header">
+            <h3 class="note-card__title">Markdown 语法速查表</h3>
+            <span class="note-card__favorite note-card__favorite--active" aria-label="取消收藏">
+              <svg width="14" height="14" viewBox="0 0 16 16">
+                <path d="M8 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.75l-3.52 1.85.67-3.93L2.3 5.64l3.94-.57L8 1.5z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+              </svg>
+            </span>
+          </div>
+          <div class="note-card__tags">
+            <span class="tag tag--purple">Markdown</span>
+            <span class="tag tag--orange">速查</span>
+          </div>
+          <p class="note-card__preview"># Markdown 语法速查 ## 标题 使用 # 号标记标题，最多支持六级标题...</p>
+          <div class="note-card__meta">
+            <span class="note-card__date">2026-08-13</span>
+            <span class="note-card__words">2.5k 字</span>
+          </div>
+        </article>
+
+        <article class="note-card" data-id="3">
+          <div class="note-card__header">
+            <h3 class="note-card__title">Electron 应用开发指南</h3>
+            <span class="note-card__favorite" aria-label="收藏">
+              <svg width="14" height="14" viewBox="0 0 16 16">
+                <path d="M8 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.75l-3.52 1.85.67-3.93L2.3 5.64l3.94-.57L8 1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+              </svg>
+            </span>
+          </div>
+          <div class="note-card__tags">
+            <span class="tag tag--red">Electron</span>
+            <span class="tag tag--blue">开发</span>
+          </div>
+          <p class="note-card__preview">Electron 是一个使用 JavaScript、HTML 和 CSS 构建桌面应用程序的框架...</p>
+          <div class="note-card__meta">
+            <span class="note-card__date">2026-08-12</span>
+            <span class="note-card__words">3.8k 字</span>
+          </div>
+        </article>
+      </div>
+    </main>
+
+    <!-- 可拖拽分割线 -->
+    <div class="resize-divider" id="resize-divider"></div>
+
+    <!-- 右侧栏：编辑预览 -->
+    <section class="editor" id="editor">
+      <!-- 编辑器工具栏 -->
+      <div class="editor__toolbar">
+        <div class="editor__tabs">
+          <button class="editor__tab editor__tab--active" data-pane="edit">编辑</button>
+          <button class="editor__tab" data-pane="preview">预览</button>
+          <button class="editor__tab" data-pane="split">分栏</button>
+        </div>
+        <div class="editor__actions">
+          <button class="editor__action-btn" id="btn-save" aria-label="保存">
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <path d="M2 1.5h7.5L12 4v8.5a.5.5 0 01-.5.5h-9a.5.5 0 01-.5-.5V2a.5.5 0 01.5-.5z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M4.5 1.5v4h4v-4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+          </button>
+          <button class="editor__action-btn" id="btn-more" aria-label="更多">
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <circle cx="7" cy="2.5" r="1.2" fill="currentColor"/>
+              <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+              <circle cx="7" cy="11.5" r="1.2" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 编辑/预览区域 -->
+      <div class="editor__panes" id="editor-panes">
+
+        <!-- 导入文件只读视图（默认隐藏） -->
+        <div class="editor__readonly" id="editor-readonly" style="display:none">
+          <div class="readonly__banner">
+            <svg width="16" height="16" viewBox="0 0 16 16">
+              <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm0 1.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM7.5 5v4h1V5h-1zm0 5v1h1v-1h-1z" fill="currentColor"/>
+            </svg>
+            <span>此笔记为导入文件，仅支持查看</span>
+          </div>
+          <div class="readonly__content" id="readonly-content">
+            <div class="readonly__file-info" id="readonly-file-info">
+              <div class="readonly__file-icon" id="readonly-file-icon"></div>
+              <div class="readonly__file-name" id="readonly-file-name"></div>
+              <div class="readonly__actions">
+                <button class="readonly__open-btn" id="btn-open-original">
+                  <svg width="14" height="14" viewBox="0 0 14 14">
+                    <path d="M5 1H2a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <path d="M9 1h4v4M13 1L7.5 6.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>打开文件</span>
+                </button>
+                <button class="readonly__open-btn" id="btn-download-file">
+                  <svg width="14" height="14" viewBox="0 0 14 14">
+                    <path d="M7 1v8M3 5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M1 11v2h12v-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>下载文件</span>
+                </button>
+              </div>
+            </div>
+            <div class="readonly__preview" id="readonly-preview"></div>
+          </div>
+        </div>
+
+        <!-- 编辑区域 -->
+        <div class="editor__pane editor__pane--edit" id="pane-edit">
+          <textarea class="editor__textarea" id="markdown-editor" placeholder="开始编写笔记...（支持 Markdown 语法）"># 欢迎使用青竹笔记
+
+这是一个轻量级可视化笔记应用。
+
+## 功能特性
+
+- 支持 Markdown 语法
+- 实时预览
+- 分类管理
+- 收藏功能
+
+## 代码示例
+
+```javascript
+function hello() {
+  console.log("Hello, World!");
+}
+```
+
+> 这是一个引用块的示例
+
+| 功能 | 状态 |
+|------|------|
+| 编辑 | ✅ |
+| 预览 | ✅ |
+| 导出 | 🚧 |
+
+- [x] 已完成任务
+- [ ] 待办任务</textarea>
+        </div>
+
+        <!-- 分割线（可拖拽） -->
+        <div class="editor__divider" id="editor-divider"></div>
+
+        <!-- 预览区域 -->
+        <div class="editor__pane editor__pane--preview" id="pane-preview">
+          <div class="editor__preview markdown-body" id="markdown-preview">
+            <!-- 预览内容由 JavaScript 动态渲染 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部状态栏 -->
+      <div class="editor__statusbar">
+        <span class="editor__status-item" id="status-words">字数：85</span>
+        <span class="editor__status-item" id="status-lines">行数：28</span>
+        <span class="editor__status-item" id="status-save">已保存</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- 登录界面 -->
+  <div class="login-overlay" id="login-overlay">
+    <div class="login-box">
+      <div class="login-box__header">
+        <div class="login-box__icon">
+          <svg width="48" height="48" viewBox="0 0 48 48">
+            <rect x="8" y="4" width="32" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M24 18c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6-2.7-6-6-6z" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M14 38c0-5.5 4.5-10 10-10s10 4.5 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h2 class="login-box__title" id="login-title">登录</h2>
+        <p class="login-box__subtitle" id="login-subtitle">请输入账号密码继续</p>
+      </div>
+      <div class="login-box__body">
+        <div class="login-field">
+          <label class="login-field__label">账号</label>
+          <input class="login-field__input" type="text" id="login-username" placeholder="请输入账号" autofocus>
+        </div>
+        <div class="login-field">
+          <label class="login-field__label">密码</label>
+          <div class="login-password-wrap">
+            <input class="login-field__input login-field__input--pwd" type="password" id="login-password" placeholder="请输入密码">
+            <button class="login-pwd-toggle" type="button" id="pwd-toggle" tabindex="-1" aria-label="切换密码可见性">
+              <svg class="login-pwd-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="login-pwd-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="login-field" id="login-confirm-field" style="display:none">
+          <label class="login-field__label">确认密码</label>
+          <div class="login-password-wrap">
+            <input class="login-field__input login-field__input--pwd" type="password" id="login-confirm-password" placeholder="请再次输入密码">
+            <button class="login-pwd-toggle" type="button" id="pwd-toggle-confirm" tabindex="-1" aria-label="切换密码可见性">
+              <svg class="login-pwd-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="login-pwd-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="login-error" id="login-error"></div>
+      </div>
+      <div class="login-box__footer">
+        <button class="login-btn login-btn--primary" id="btn-login-submit">登录</button>
+        <button class="login-btn login-btn--secondary" id="btn-login-switch">注册新账号</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============ 登录/注册功能（内联，不依赖 app.js） ============
+    (function() {
+      // 注册：保存凭证到 passwd
+      function doRegister() {
+        var username = document.getElementById('login-username').value.trim();
+        var password = document.getElementById('login-password').value;
+        var confirmPassword = document.getElementById('login-confirm-password').value;
+        var errEl = document.getElementById('login-error');
+
+        if (!username) { errEl.textContent = '请输入账号'; return; }
+        if (!password) { errEl.textContent = '请输入密码'; return; }
+        if (!confirmPassword) { errEl.textContent = '请再次输入密码'; return; }
+        if (password !== confirmPassword) { errEl.textContent = '两次输入的密码不一致'; return; }
+
+        // 通过 preload 的 API 保存
+        if (window.electronAPI && window.electronAPI.saveLoginCredentials) {
+          // 使用 SHA-256 哈希（如果浏览器支持）
+          crypto.subtle.digest('SHA-256', new TextEncoder().encode(password)).then(function(hash) {
+            var hashStr = Array.from(new Uint8Array(hash)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+            window.electronAPI.saveLoginCredentials({ username: username, passwordHash: hashStr }).then(function(result) {
+              if (result) {
+                // 注册成功，切换到登录
+                document.getElementById('login-title').textContent = '登录';
+                document.getElementById('login-subtitle').textContent = '请输入账号密码继续';
+                document.getElementById('btn-login-submit').textContent = '登录';
+                document.getElementById('login-confirm-field').style.display = 'none';
+                document.getElementById('btn-login-switch').textContent = '注册新账号';
+                errEl.textContent = '注册成功，请登录';
+                errEl.style.color = '#107c10';
+                document.getElementById('login-username').value = '';
+                document.getElementById('login-password').value = '';
+                document.getElementById('login-confirm-password').value = '';
+              } else {
+                errEl.textContent = '注册失败，请重试';
+              }
+            });
+          });
+        } else {
+          errEl.textContent = '需要 Electron 环境';
+        }
+      }
+
+      // 登录：验证凭证
+      function doLogin() {
+        var username = document.getElementById('login-username').value.trim();
+        var password = document.getElementById('login-password').value;
+        var errEl = document.getElementById('login-error');
+
+        if (!username) { errEl.textContent = '请输入账号'; return; }
+        if (!password) { errEl.textContent = '请输入密码'; return; }
+
+        if (window.electronAPI && window.electronAPI.checkLoginCredentials) {
+          crypto.subtle.digest('SHA-256', new TextEncoder().encode(password)).then(function(hash) {
+            var hashStr = Array.from(new Uint8Array(hash)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+            window.electronAPI.checkLoginCredentials({ username: username, passwordHash: hashStr }).then(function(valid) {
+              if (valid) {
+                document.getElementById('login-overlay').classList.add('login-overlay--hidden');
+                errEl.textContent = '';
+              } else {
+                errEl.textContent = '账号或密码错误';
+              }
+            });
+          });
+        } else {
+          errEl.textContent = '需要 Electron 环境';
+        }
+      }
+
+      // 切换登录/注册界面
+      function doSwitch() {
+        var title = document.getElementById('login-title');
+        var subtitle = document.getElementById('login-subtitle');
+        var submitBtn = document.getElementById('btn-login-submit');
+        var confirmField = document.getElementById('login-confirm-field');
+        var switchBtn = document.getElementById('btn-login-switch');
+        var errEl = document.getElementById('login-error');
+        var isLogin = submitBtn && submitBtn.textContent === '登录';
+
+        if (title) title.textContent = isLogin ? '注册' : '登录';
+        if (subtitle) subtitle.textContent = isLogin ? '创建您的账号' : '请输入账号密码继续';
+        if (submitBtn) submitBtn.textContent = isLogin ? '注册' : '登录';
+        if (confirmField) confirmField.style.display = isLogin ? 'block' : 'none';
+        if (switchBtn) switchBtn.textContent = isLogin ? '返回登录' : '注册新账号';
+        if (errEl) { errEl.textContent = ''; errEl.style.color = ''; }
+        if (document.getElementById('login-username')) document.getElementById('login-username').value = '';
+        if (document.getElementById('login-password')) { 
+          document.getElementById('login-password').value = '';
+          document.getElementById('login-password').type = 'password';
+        }
+        if (document.getElementById('login-confirm-password')) {
+          document.getElementById('login-confirm-password').value = '';
+          document.getElementById('login-confirm-password').type = 'password';
+        }
+        // 重置眼睛图标
+        var toggles = document.querySelectorAll('.login-pwd-toggle');
+        for (var i = 0; i < toggles.length; i++) {
+          var eye = toggles[i].querySelector('.login-pwd-eye');
+          var eyeOff = toggles[i].querySelector('.login-pwd-eye-off');
+          if (eye) eye.style.display = '';
+          if (eyeOff) eyeOff.style.display = 'none';
+        }
+      }
+
+      // 绑定事件
+      var submitBtn = document.getElementById('btn-login-submit');
+      var switchBtn = document.getElementById('btn-login-switch');
+      var unInput = document.getElementById('login-username');
+      var pwInput = document.getElementById('login-password');
+      var cfInput = document.getElementById('login-confirm-password');
+
+      if (submitBtn) {
+        submitBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          var isLogin = submitBtn.textContent === '登录';
+          if (isLogin) doLogin(); else doRegister();
+        });
+      }
+      if (switchBtn) {
+        switchBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          doSwitch();
+        });
+      }
+      function keydownHandler(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          var btn = document.getElementById('btn-login-submit');
+          if (btn) btn.click();
+        }
+      }
+      if (unInput) unInput.addEventListener('keydown', keydownHandler);
+      if (pwInput) pwInput.addEventListener('keydown', keydownHandler);
+      if (cfInput) cfInput.addEventListener('keydown', keydownHandler);
+
+      // 密码可见性切换
+      function setupPwdToggle(btnId, inputId) {
+        var btn = document.getElementById(btnId);
+        var input = document.getElementById(inputId);
+        if (!btn || !input) return;
+        btn.addEventListener('click', function(e) {
+          e.preventDefault();
+          var isPassword = input.type === 'password';
+          input.type = isPassword ? 'text' : 'password';
+          // 切换眼睛图标
+          var eye = btn.querySelector('.login-pwd-eye');
+          var eyeOff = btn.querySelector('.login-pwd-eye-off');
+          if (eye) eye.style.display = isPassword ? 'none' : '';
+          if (eyeOff) eyeOff.style.display = isPassword ? '' : 'none';
+        });
+      }
+      setupPwdToggle('pwd-toggle', 'login-password');
+      setupPwdToggle('pwd-toggle-confirm', 'login-confirm-password');
+
+      // 侧边栏按钮和导航栏已在 app.js 中通过 bindEvents() 和 setupEventDelegation() 处理
+      // 此处不再重复绑定，避免重复触发
+
+      // 窗口控制按钮
+      var titlebar = document.querySelector('.titlebar');
+      if (titlebar) {
+        titlebar.addEventListener('click', function(e) {
+          var target = e.target.closest('[id]');
+          if (!target) return;
+          var id = target.id;
+          if (id === 'btn-minimize' && window.electronAPI) { e.preventDefault(); window.electronAPI.minimize(); }
+          else if (id === 'btn-maximize' && window.electronAPI) { e.preventDefault(); window.electronAPI.maximize(); }
+          else if (id === 'btn-close' && window.electronAPI) { e.preventDefault(); window.electronAPI.close(); }
+        });
+      }
+    })();
+  </script>
+
+  <!-- 设置弹窗 -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal">
+      <div class="modal__header">
+        <h3 class="modal__title">设置</h3>
+        <button class="modal__close" id="btn-settings-close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div class="settings-section">
+          <h4 class="settings-section__title">笔记存储</h4>
+          <div class="settings-item">
+            <div class="settings-item__info">
+              <span class="settings-item__label">笔记目录</span>
+              <input type="text" class="settings-item__input" id="settings-notes-dir-input" placeholder="当前路径">
+              <span class="settings-item__path" id="settings-notes-dir">加载中...</span>
+            </div>
+            <div class="settings-item__actions">
+              <button class="settings-item__btn" id="btn-browse-notes-dir">浏览</button>
+              <button class="settings-item__btn settings-item__btn--primary" id="btn-save-notes-dir">保存</button>
+            </div>
+          </div>
+          <p class="settings-item__hint">可以直接输入路径或点击浏览选择目录，点击保存确认修改。</p>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--primary" id="btn-settings-done">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

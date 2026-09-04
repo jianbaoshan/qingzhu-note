@@ -1,0 +1,66 @@
+{
+  "name": "qingzhu-notes",
+  "productName": "青竹笔记",
+  "version": "1.0.0",
+  "description": "青竹笔记 - 轻量级可视化笔记软件",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "mammoth": "^1.6.0",
+    "marked": "^9.1.2",
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^5.0.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.qingzhu.notes",
+    "productName": "青竹笔记",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "signDlls": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true,
+      "shortcutName": "青竹笔记",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "installer.nsh"
+    },
+    "extraResources": [
+      {
+        "from": "scripts",
+        "to": "scripts",
+        "filter": ["*.ps1"]
+      },
+      {
+        "from": "excel-worker.js",
+        "to": "."
+      }
+    ]
+  }
+}

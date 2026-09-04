@@ -1,0 +1,304 @@
+/* ========================================
+   Win11 Notes - 主样式文件
+   ======================================== */
+
+/* 导入 Win11 基础样式 */
+@import url('win11.css');
+
+/* 导入 Markdown 预览样式 */
+@import url('markdown.css');
+
+/* ---------- 全局额外样式 ---------- */
+
+/* 禁止文本选中（除可编辑区域外） */
+body {
+  -webkit-app-region: no-drag;
+}
+
+/* 可选中文本区域 */
+.sidebar__nav,
+.note-list__cards,
+.editor__textarea,
+.editor__preview {
+  -webkit-app-region: no-drag;
+}
+
+/* 拖拽区域 */
+.titlebar__drag {
+  -webkit-app-region: drag;
+}
+
+/* 过渡动画 - 主题切换 */
+html {
+  transition: background 0.2s ease;
+}
+
+/* 滚动容器 */
+.note-list__cards::-webkit-scrollbar,
+.editor__preview::-webkit-scrollbar,
+.sidebar__nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.note-list__cards::-webkit-scrollbar-track,
+.editor__preview::-webkit-scrollbar-track,
+.sidebar__nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .editor {
+    min-width: 300px;
+  }
+
+  .note-list__cards--grid .note-card {
+    width: 100%;
+  }
+}
+
+@media (max-width: 700px) {
+  .sidebar {
+    width: 200px;
+    min-width: 200px;
+  }
+
+  .editor {
+    min-width: 250px;
+  }
+}
+
+/* 加载状态 */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-tertiary);
+}
+
+.empty-state__icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.empty-state__text {
+  font-size: 14px;
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.note-card {
+  animation: fadeIn 0.2s ease;
+}
+
+/* 遮罩层 */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 999;
+  animation: fadeIn 0.15s ease;
+}
+
+/* ---------- Toast 提示 ---------- */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 10px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  color: var(--text-primary);
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+.toast--show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast--success {
+  border-left: 3px solid #107c10;
+}
+
+.toast--warning {
+  border-left: 3px solid #f08000;
+}
+
+.toast--error {
+  border-left: 3px solid #c81e1e;
+}
+
+[data-theme="dark"] .toast--success {
+  border-left-color: #6ccb5f;
+}
+
+[data-theme="dark"] .toast--warning {
+  border-left-color: #ffb944;
+}
+
+[data-theme="dark"] .toast--error {
+  border-left-color: #ff6969;
+}
+
+/* ---------- 导入进度 ---------- */
+.import-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease;
+}
+
+.import-progress__content {
+  width: 320px;
+  padding: 24px;
+  background: var(--bg-card);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.import-progress__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.import-progress__bar {
+  height: 6px;
+  background: var(--bg-hover);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.import-progress__fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.import-progress__text {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.import-progress--done {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* ---------- 右键菜单 ---------- */
+.context-menu {
+  position: fixed;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--bg-card);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 10001;
+  animation: fadeIn 0.1s ease;
+}
+
+.context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.context-menu__item:hover {
+  background: var(--bg-hover);
+}
+
+.context-menu__item:active {
+  background: var(--bg-selected);
+}
+
+.context-menu__item span {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+.context-menu__separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border);
+}
+
+/* ---------- 选中笔记卡片 ---------- */
+.note-card--selected {
+  background: var(--bg-selected);
+  border-color: var(--accent);
+}
+
+.note-card--selected:hover {
+  background: var(--bg-selected);
+  border-color: var(--accent);
+}
+
+/* ---------- 分割线（编辑器调整） ---------- */
+.editor__divider {
+  display: none;
+}
