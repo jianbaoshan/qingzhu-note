@@ -1267,6 +1267,62 @@ const App = window.App = {
         document.body.style.userSelect = '';
       }
     });
+
+    // 编辑器分栏分割线拖拽
+    this.initEditorDivider();
+  },
+
+  initEditorDivider() {
+    const divider = document.getElementById('editor-divider');
+    const editPane = document.getElementById('pane-edit');
+    const previewPane = document.getElementById('pane-preview');
+    if (!divider || !editPane || !previewPane) return;
+
+    let isDragging = false;
+    let startX = 0;
+    let startEditFlex = 0;
+    let startPreviewFlex = 0;
+
+    divider.addEventListener('mousedown', (e) => {
+      if (divider.style.display === 'none') return;
+      isDragging = true;
+      startX = e.clientX;
+      // 记录当前 flex 值
+      startEditFlex = parseFloat(editPane.style.flex) || 1;
+      startPreviewFlex = parseFloat(previewPane.style.flex) || 1;
+      divider.classList.add('editor__divider--active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const editor = document.querySelector('.editor__panes');
+      if (!editor) return;
+      const editorRect = editor.getBoundingClientRect();
+      const totalWidth = editorRect.width;
+      if (totalWidth <= 0) return;
+
+      const offset = e.clientX - startX;
+      // 通过 flex 比例调整，offset 相对于总宽度
+      const flexDelta = offset / totalWidth * (startEditFlex + startPreviewFlex);
+
+      let newEditFlex = Math.max(0.2, Math.min(5, startEditFlex + flexDelta));
+      let newPreviewFlex = Math.max(0.2, Math.min(5, startPreviewFlex - flexDelta));
+
+      editPane.style.flex = newEditFlex;
+      previewPane.style.flex = newPreviewFlex;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        divider.classList.remove('editor__divider--active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
   },
 
   // ============ 设置弹窗 ============

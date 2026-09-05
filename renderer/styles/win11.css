@@ -706,6 +706,15 @@ html, body {
   transition: background 0.15s ease;
 }
 
+.resize-divider::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: 0;
+  bottom: 0;
+}
+
 .resize-divider:hover,
 .resize-divider--active {
   background: var(--accent);
@@ -820,15 +829,16 @@ html, body {
   transition: background 0.2s ease;
 }
 
-.editor__divider:hover {
+.editor__divider:hover,
+.editor__divider--active {
   background: var(--accent);
 }
 
 .editor__divider::after {
   content: '';
   position: absolute;
-  left: -4px;
-  right: -4px;
+  left: -6px;
+  right: -6px;
   top: 0;
   bottom: 0;
 }
@@ -1370,6 +1380,8 @@ body {
 .readonly__preview {
   width: 100%;
   max-width: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -1436,7 +1448,7 @@ body {
 /* PDF 预览 */
 .readonly__preview .pdf-viewer {
   width: 100%;
-  height: 75vh;
+  height: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
