@@ -14,9 +14,13 @@ const App = window.App = {
     config: { theme: 'system', fontSize: 14, autoSave: true, autoSaveInterval: 30000 },
     isDirty: false,
     autoSaveTimer: null,
-    selectedNotes: new Set(),
     expandedCategories: new Set()
   },
+
+  // 批量选择状态
+  _batchSelected: new Set(),
+  _currentPreviewType: '', // 当前预览文件类型：pdf, html_file, html 等
+  _currentSearchText: '',  // 当前搜索文本
 
   // ============ 初始化 ============
   async init() {
@@ -409,7 +413,7 @@ const App = window.App = {
 
     notes.forEach(note => {
       const card = document.createElement('article');
-      card.className = `note-card${this.state.currentNoteId === note.id ? ' note-card--selected' : ''}`;
+      card.className = `note-card${this.state.currentNoteId === note.id ? ' note-card--selected' : ''}${this._batchSelected.has(note.id) ? ' note-card--batch' : ''}`;
       card.dataset.id = note.id;
 
       const date = new Date(note.updatedAt);
@@ -421,7 +425,10 @@ const App = window.App = {
         `<span class="tag tag--blue">${this.escapeHtml(tag)}</span>`
       ).join('');
 
+      const isChecked = this._batchSelected.has(note.id);
+
       card.innerHTML = `
+        <input type="checkbox" class="note-card__checkbox" data-batch-id="${note.id}" ${isChecked ? 'checked' : ''}>
         <div class="note-card__header">
           <h3 class="note-card__title">${this.escapeHtml(note.title)}</h3>
           <span class="note-card__favorite${note.isFavorite ? ' note-card__favorite--active' : ''}" data-action="favorite" aria-label="收藏">
@@ -437,8 +444,33 @@ const App = window.App = {
         </div>
       `;
 
+      // 复选框点击（批量选择）
+      const checkbox = card.querySelector('.note-card__checkbox');
+      checkbox.addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (e.target.checked) {
+          this._batchSelected.add(note.id);
+        } else {
+          this._batchSelected.delete(note.id);
+        }
+        this._updateBatchUI();
+        this.renderNoteList();
+      });
+
       card.addEventListener('click', (e) => {
         if (e.target.closest('[data-action="favorite"]')) return;
+        if (e.target.closest('.note-card__checkbox')) return;
+        // 如果批量模式有选中项，则切换当前卡的选中状态
+        if (this._batchSelected.size > 0) {
+          if (this._batchSelected.has(note.id)) {
+            this._batchSelected.delete(note.id);
+          } else {
+            this._batchSelected.add(note.id);
+          }
+          this._updateBatchUI();
+          this.renderNoteList();
+          return;
+        }
         this.openNote(note.id);
       });
 
@@ -521,6 +553,8 @@ const App = window.App = {
       const panes = editorPanes.querySelectorAll('.editor__pane, .editor__divider');
       panes.forEach(el => el.style.display = 'none');
     }
+    // 通知主进程只读视图已显示（用于拦截 Ctrl+F）
+    if (window.electronAPI?.setReadonlyVisible) window.electronAPI.setReadonlyVisible(true);
 
     const fileNameEl = document.getElementById('readonly-file-name');
     const iconEl = document.getElementById('readonly-file-icon');
@@ -552,6 +586,8 @@ const App = window.App = {
         banner.textContent = '此笔记为导入文件，已通过 Word 转换为 PDF 预览，保留原始格式';
       } else if (['xlsx', 'xls'].includes(ext)) {
         banner.textContent = '此笔记为导入文件，已通过 Excel 转换为 PDF 预览，保留原始格式';
+      } else if (['html', 'htm'].includes(ext)) {
+        banner.textContent = '此笔记为导入文件，通过 iframe 直接渲染 HTML 预览';
       } else {
         banner.textContent = '此笔记为导入文件，仅支持查看';
       }
@@ -567,6 +603,8 @@ const App = window.App = {
       iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="currentColor" font-family="sans-serif">XL</text></svg>`;
     } else if (['doc', 'docx'].includes(ext)) {
       iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="currentColor" font-family="sans-serif">W</text></svg>`;
+    } else if (['html', 'htm'].includes(ext)) {
+      iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor" font-family="sans-serif">HTML</text></svg>`;
     } else {
       iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M18 28h12M18 33h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
     }
@@ -585,6 +623,56 @@ const App = window.App = {
           previewEl.innerHTML = `<iframe src="file:///${result.content}" class="pdf-viewer"></iframe>`;
           previewEl.style.display = 'block';
           if (fileInfo) fileInfo.style.display = 'none';
+        } else if (result.type === 'html_file') {
+          // HTML：用 srcdoc 嵌入（确保同源，可访问 contentDocument），带缩放工具栏
+          const zoomLevel = this._currentZoom || 100;
+          const srcdocContent = `<base href="file:///${result.baseDir}/">${result.content}`;
+          previewEl.innerHTML = `
+            <div class="readonly__zoom-toolbar" style="margin-bottom:8px">
+              <button class="readonly__zoom-btn" data-zoom-action="out" title="缩小">−</button>
+              <span class="readonly__zoom-label" id="html-zoom-label">${zoomLevel}%</span>
+              <button class="readonly__zoom-btn" data-zoom-action="in" title="放大">+</button>
+              <button class="readonly__zoom-btn readonly__zoom-reset" data-zoom-action="reset" title="重置缩放">100%</button>
+            </div>
+            <iframe srcdoc="${srcdocContent.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" class="pdf-viewer" id="html-preview-iframe" style="zoom:${zoomLevel / 100}"></iframe>`;
+          previewEl.style.display = 'block';
+          if (fileInfo) fileInfo.style.display = 'none';
+          const iframe = previewEl.querySelector('#html-preview-iframe');
+          // 绑定缩放事件（鼠标滚轮 + 工具栏按钮）
+          const zoomLabel = document.getElementById('html-zoom-label');
+          if (zoomLabel) {
+            const updateZoom = (level) => {
+              this._currentZoom = Math.max(50, Math.min(200, level));
+              if (zoomLabel) zoomLabel.textContent = this._currentZoom + '%';
+              if (iframe) iframe.style.zoom = this._currentZoom / 100;
+            };
+            // 工具栏按钮缩放
+            previewEl.addEventListener('click', (e) => {
+              const btn = e.target.closest('[data-zoom-action]');
+              if (!btn) return;
+              const action = btn.dataset.zoomAction;
+              if (action === 'in') updateZoom(this._currentZoom + 10);
+              else if (action === 'out') updateZoom(this._currentZoom - 10);
+              else if (action === 'reset') updateZoom(100);
+            });
+            // 鼠标滚轮缩放：iframe 加载后直接绑定到其 contentDocument（同源）
+            if (iframe) {
+              iframe.addEventListener('load', () => {
+                try {
+                  const iDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                  if (!iDoc) return;
+                  iDoc.addEventListener('wheel', (e) => {
+                    if (!e.ctrlKey) return;
+                    e.preventDefault();
+                    const delta = e.deltaY > 0 ? -10 : 10;
+                    updateZoom(this._currentZoom + delta);
+                  }, { passive: false });
+                  // 暗色主题注入
+                  this._applyThemeToHtmlPreview();
+                } catch (_) { /* 同源不应抛异常，静默忽略 */ }
+              }, { once: true });
+            }
+          }
         } else if (result.type === 'html') {
           // Word/Excel：显示转换后的 HTML，带缩放工具栏
           const zoomLevel = this._currentZoom || 100;
@@ -658,6 +746,14 @@ const App = window.App = {
     if (downloadBtn) {
       downloadBtn._originalFile = relativePath;
     }
+
+    // 记录当前预览文件类型（用于搜索功能）
+    this._currentPreviewType = ext === 'pdf' ? 'pdf' : 'html';
+
+    // 切换文件时清除之前的页面内搜索高亮和会话
+    if (window.electronAPI?.stopFindInPage) window.electronAPI.stopFindInPage();
+
+    // 搜索栏默认隐藏，由 Ctrl+F 召唤（事件绑定在 init 中已完成）
   },
 
   hideReadonlyView() {
@@ -668,6 +764,14 @@ const App = window.App = {
       const panes = editorPanes.querySelectorAll('.editor__pane, .editor__divider');
       panes.forEach(el => el.style.display = '');
     }
+    // 隐藏搜索栏
+    const searchBar = document.getElementById('readonly-search-bar');
+    if (searchBar) searchBar.style.display = 'none';
+    // 停止页面内搜索
+    if (window.electronAPI?.stopFindInPage) window.electronAPI.stopFindInPage();
+    this._currentSearchText = '';
+    // 通知主进程只读视图已隐藏
+    if (window.electronAPI?.setReadonlyVisible) window.electronAPI.setReadonlyVisible(false);
   },
 
   // ============ 文件预览缩放控制 ============
@@ -801,6 +905,10 @@ const App = window.App = {
 
     // 隐藏只读视图
     this.hideReadonlyView();
+
+    // 清除批量选择
+    this._batchSelected.clear();
+    this._updateBatchUI();
 
     // 更新侧边栏高亮
     document.querySelectorAll('.nav-list__item').forEach(el => {
@@ -966,21 +1074,51 @@ const App = window.App = {
       });
     }
 
+    // 全局引用，供 HTML onkeydown 绑定使用
+    window.__app = this;
+
+    // 初始化搜索栏事件（一次绑定，无需重复）
+    this._initFileSearch();
+
+    // 监听主进程发来的搜索栏召唤命令（用于 PDF 等 iframe 内文件）
+    if (window.electronAPI?.onShowSearchBar) {
+      window.electronAPI.onShowSearchBar(() => {
+        const readonly = document.getElementById('editor-readonly');
+        if (readonly && readonly.style.display !== 'none') {
+          const searchBar = document.getElementById('readonly-search-bar');
+          const input = document.getElementById('search-input');
+          if (searchBar && input) {
+            searchBar.style.display = 'flex';
+            input.value = '';
+            input.focus();
+            const count = document.getElementById('search-count');
+            if (count) count.textContent = '';
+            this._currentSearchText = '';
+          }
+        }
+      });
+    }
+
     // 保存按钮
     const saveBtn = document.getElementById('btn-save');
     if (saveBtn) saveBtn.addEventListener('click', () => this.saveNote());
 
-    // 键盘快捷键 (Ctrl+S)
-    document.addEventListener('keydown', (e) => {
+    // 键盘快捷键 (Ctrl+S / Ctrl+N)
+    // 注：Ctrl+F 由主进程 before-input-event 拦截后发 IPC 处理
+    window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
+        e.stopPropagation();
         this.saveNote();
+        return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
+        e.stopPropagation();
         this.createNewNote();
+        return;
       }
-    });
+    }, true);
 
     // 视图切换按钮
     document.querySelectorAll('.view-btn').forEach(btn => {
@@ -1121,6 +1259,8 @@ const App = window.App = {
           if (window.electronAPI) window.electronAPI.setTheme(next);
           this.state.config.theme = next;
           if (window.electronAPI) window.electronAPI.saveConfig(this.state.config);
+          // 切换后更新 HTML 预览 iframe 的主题
+          this._applyThemeToHtmlPreview();
           return;
         }
 
@@ -1157,6 +1297,7 @@ const App = window.App = {
         if (id === 'btn-minimize') { e.preventDefault(); window.electronAPI?.minimize(); }
         else if (id === 'btn-maximize') { e.preventDefault(); window.electronAPI?.maximize(); }
         else if (id === 'btn-close') { e.preventDefault(); window.electronAPI?.close(); }
+        else if (id === 'btn-devtools') { e.preventDefault(); window.electronAPI?.toggleDevTools(); }
       });
     }
 
@@ -1218,7 +1359,7 @@ const App = window.App = {
       });
     }
 
-    // 工具栏事件委托（清空回收站按钮）
+    // 工具栏事件委托（清空回收站、批量删除、全选）
     const toolbar = document.getElementById('toolbar-actions');
     if (toolbar) {
       toolbar.addEventListener('click', (e) => {
@@ -1227,8 +1368,26 @@ const App = window.App = {
         if (target.id === 'btn-empty-recycle-bin') {
           e.preventDefault();
           this.clearRecycleBin();
+        } else if (target.id === 'btn-batch-delete') {
+          e.preventDefault();
+          this.batchDelete();
         }
       });
+
+      // 全选复选框
+      const selectAll = document.getElementById('select-all-checkbox');
+      if (selectAll) {
+        selectAll.addEventListener('change', (e) => {
+          const notes = this.getFilteredNotes();
+          if (e.target.checked) {
+            notes.forEach(n => this._batchSelected.add(n.id));
+          } else {
+            this._batchSelected.clear();
+          }
+          this._updateBatchUI();
+          this.renderNoteList();
+        });
+      }
     }
   },
 
@@ -1428,6 +1587,319 @@ const App = window.App = {
       this.showToast('回收站已清空', 'success');
     } catch (e) {
       this.showToast(`清空失败：${e.message}`, 'error');
+    }
+  },
+
+  // ============ 批量删除 ============
+  async batchDelete() {
+    if (this._batchSelected.size === 0) return;
+    const count = this._batchSelected.size;
+    const isTrash = this.state.currentCategory === 'trash';
+    const msg = isTrash
+      ? `确定要永久删除选中的 ${count} 条笔记吗？\n\n此操作不可恢复。`
+      : `确定要将选中的 ${count} 条笔记移到回收站吗？`;
+    if (!confirm(msg)) return;
+
+    if (!window.electronAPI) return;
+    const ids = Array.from(this._batchSelected);
+    try {
+      if (isTrash) {
+        for (const id of ids) {
+          await window.electronAPI.deleteNote({ id, permanent: true });
+        }
+      } else {
+        for (const id of ids) {
+          await window.electronAPI.deleteNote({ id, permanent: false });
+        }
+      }
+      this._batchSelected.clear();
+      this._updateBatchUI();
+      await this.loadNotes();
+      this.renderNoteList();
+      this.renderSidebar();
+      this.showToast(`已${isTrash ? '永久删除' : '删除'} ${count} 条笔记`, 'success');
+    } catch (e) {
+      this.showToast(`批量删除失败：${e.message}`, 'error');
+    }
+  },
+
+  // ============ 更新批量操作 UI ============
+  _updateBatchUI() {
+    const count = this._batchSelected.size;
+    const batchDeleteBtn = document.getElementById('btn-batch-delete');
+    const selectAllLabel = document.getElementById('batch-select-label');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const container = document.getElementById('cards-container');
+
+    if (count > 0) {
+      if (batchDeleteBtn) {
+        batchDeleteBtn.style.display = 'inline-flex';
+        batchDeleteBtn.querySelector('span').textContent = `删除选中 (${count})`;
+      }
+      if (selectAllLabel) selectAllLabel.style.display = 'inline-flex';
+      if (container) container.classList.add('note-list--batch-mode');
+    } else {
+      if (batchDeleteBtn) batchDeleteBtn.style.display = 'none';
+      if (selectAllLabel) {
+        selectAllLabel.style.display = 'none';
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+      }
+      if (container) container.classList.remove('note-list--batch-mode');
+    }
+
+    // 点击非批量区域时清除选择
+    if (count === 0 && selectAllLabel) selectAllLabel.style.display = 'none';
+  },
+
+  // ============ 更新 HTML 预览 iframe 主题 ============
+  _applyThemeToHtmlPreview() {
+    const iframe = document.getElementById('html-preview-iframe');
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      if (!doc) return;
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      // 移除旧样式
+      const oldStyle = doc.getElementById('html-preview-theme');
+      if (oldStyle) oldStyle.remove();
+      if (isDark) {
+        const style = doc.createElement('style');
+        style.id = 'html-preview-theme';
+        style.textContent = `
+          body {
+            background: #1e1e1e !important;
+            color: #d4d4d4 !important;
+          }
+          a { color: #60cdff !important; }
+          a:visited { color: #c58aff !important; }
+          code, pre {
+            background: #2d2d2d !important;
+            color: #d4d4d4 !important;
+          }
+          th, td {
+            border-color: #555 !important;
+          }
+        `;
+        doc.head.appendChild(style);
+      }
+    } catch (e) {
+      // 跨域或其它异常，静默忽略
+    }
+  },
+
+  // ============ 文件搜索（查找/跳转） ============
+  _searchInFile(text, backward = false, findNext = false) {
+    if (!text) return;
+    this._currentSearchText = text;
+
+    // PDF：使用 Electron 的 webContents.findInPage (通过 IPC)
+    if (this._currentPreviewType === 'pdf') {
+      console.log('[PDF搜索] _searchInFile called:', { text, backward, findNext, time: Date.now() });
+      if (window.electronAPI?.findInPage) {
+        // 判断是首次搜索还是导航：首次搜索时 search-count 显示"搜索中..."
+        const sc = document.getElementById('search-count');
+        const isInitialSearch = sc && sc.textContent === '搜索中...';
+
+        if (isInitialSearch) {
+          // 首次搜索：使用 findNext:true（原始工作方式，PDF 查看器正确建立搜索会话并滚动到匹配）
+          window.electronAPI.findInPage({ text, forward: !backward, findNext: true });
+          console.log('[PDF搜索] initial findInPage sent:', { text, forward: !backward });
+        } else {
+          // 导航：先清除现有搜索会话，再重新搜索
+          // PDF 查看器插件不支持在现有搜索会话中通过 findNext 导航，
+          // 每次调用 findNext 都会回到第一个匹配位置。
+          // 解决方案：清除会话后，PDF 视口位置保持不变，
+          // 然后 findNext:true 会从当前视口位置开始查找下一个匹配。
+          window.electronAPI.stopFindInPage('clearSelection');
+          setTimeout(() => {
+            window.electronAPI.findInPage({ text, forward: !backward, findNext: true });
+            console.log('[PDF搜索] navigation clear+search sent:', { text, forward: !backward });
+          }, 100);
+        }
+
+        // 显示搜索耗时进度（仅首次搜索显示进度条）
+        if (isInitialSearch) {
+          if (this._searchTimeout) clearTimeout(this._searchTimeout);
+          if (this._searchProgressTimer) clearInterval(this._searchProgressTimer);
+          let elapsed = 0;
+          this._searchProgressTimer = setInterval(() => {
+            elapsed++;
+            if (sc && sc.textContent === '搜索中...') {
+              sc.textContent = `搜索中 (${elapsed}s)`;
+            }
+            if (elapsed >= 15) {
+              clearInterval(this._searchProgressTimer);
+              this._searchProgressTimer = null;
+              if (sc && sc.textContent && sc.textContent.includes('搜索中')) {
+                sc.textContent = '搜索超时';
+              }
+            }
+          }, 1000);
+          this._searchTimeout = setTimeout(() => {
+            if (sc && sc.textContent && sc.textContent.includes('搜索中')) {
+              sc.textContent = '搜索超时';
+            }
+            if (this._searchProgressTimer) {
+              clearInterval(this._searchProgressTimer);
+              this._searchProgressTimer = null;
+            }
+          }, 16000);
+        }
+      }
+      return;
+    }
+
+    // HTML / Word / Excel：使用 iframe.contentWindow.find() 或 window.find()
+    const previewEl = document.getElementById('readonly-preview');
+    if (!previewEl) return;
+    const iframe = previewEl.querySelector('iframe');
+    if (iframe) {
+      try {
+        const win = iframe.contentWindow;
+        if (win && typeof win.find === 'function') {
+          win.find(text, false, backward, true, false, true, false);
+          return;
+        }
+      } catch (_) { /* 忽略 */ }
+    }
+    // 搜索父文档（Word/Excel HTML 预览）
+    try {
+      window.find(text, false, backward, true, false, true, false);
+    } catch (_) { /* 忽略 */ }
+  },
+
+  _initFileSearch() {
+    const searchInput = document.getElementById('search-input');
+    const searchPrev = document.getElementById('search-prev');
+    const searchNext = document.getElementById('search-next');
+    const searchClose = document.getElementById('search-close');
+    const searchCount = document.getElementById('search-count');
+
+    if (!searchInput) return;
+
+    // 注册 found-in-page IPC 回调（用于 PDF 搜索结果显示）
+    if (window.electronAPI?.onFoundInPage) {
+      window.electronAPI.removeFoundInPage();
+      window.electronAPI.onFoundInPage((result) => {
+        console.log('[PDF搜索] found-in-page received:', { matches: result.matches, activeMatchOrdinal: result.activeMatchOrdinal, finalUpdate: result.finalUpdate, time: Date.now() });
+        const sc = document.getElementById('search-count');
+        if (!sc) return;
+        // 仅在 finalUpdate=true 时清理进度计时器
+        if (result.finalUpdate) {
+          if (this._searchTimeout) {
+            clearTimeout(this._searchTimeout);
+            this._searchTimeout = null;
+          }
+          if (this._searchProgressTimer) {
+            clearInterval(this._searchProgressTimer);
+            this._searchProgressTimer = null;
+          }
+        }
+        if (result.matches === 0) {
+          sc.textContent = '未找到';
+        } else if (result.matches > 0) {
+          sc.textContent = `${result.activeMatchOrdinal}/${result.matches}`;
+        }
+      });
+    }
+
+    // 输入时实时搜索（仅非 PDF 文件）
+    searchInput.addEventListener('input', () => {
+      this._currentSearchText = searchInput.value;
+      if (!searchInput.value) {
+        if (searchCount) searchCount.textContent = '';
+        if (window.electronAPI?.stopFindInPage) window.electronAPI.stopFindInPage();
+        return;
+      }
+      if (this._currentPreviewType === 'pdf') {
+        // PDF 文件仅在按下 Enter 后搜索，避免输入过程中频繁调用 findInPage
+        searchCount.textContent = '';
+        return;
+      }
+      this._searchInFile(searchInput.value, false, false);
+      searchCount.textContent = '已定位';
+    });
+
+    // 全局函数供 HTML onkeydown 调用（解决事件绑定失效问题）
+    window.__searchKeydown = (e) => {
+      const app = window.__app;
+      const searchInput = document.getElementById('search-input');
+      const searchBar = document.getElementById('readonly-search-bar');
+      if (!app || !searchInput || !searchBar || searchBar.style.display === 'none') return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        console.log('[PDF搜索] Enter pressed, _currentPreviewType:', app._currentPreviewType, 'text:', searchInput.value);
+        // 防抖：防止快速连续按 Enter 导致 PDF 查看器卡死
+        const now = Date.now();
+        if (app._lastSearchTime && now - app._lastSearchTime < 800) return false;
+        app._lastSearchTime = now;
+        // 显示搜索状态，确认 Enter 被触发
+        const sc = document.getElementById('search-count');
+        if (sc) sc.textContent = '搜索中...';
+        // 首次搜索使用 findNext:true（PDF 查看器需要 findNext:true 才能正确建立搜索会话）
+        app._searchInFile(searchInput.value, e.shiftKey, true);
+        return false;
+      } else if (e.key === 'Escape') {
+        searchInput.value = '';
+        app._currentSearchText = '';
+        const sc = document.getElementById('search-count');
+        if (sc) sc.textContent = '';
+        searchInput.blur();
+        if (app._searchProgressTimer) {
+          clearInterval(app._searchProgressTimer);
+          app._searchProgressTimer = null;
+        }
+        if (app._searchTimeout) {
+          clearTimeout(app._searchTimeout);
+          app._searchTimeout = null;
+        }
+        app._lastSearchTime = 0;
+        if (window.electronAPI?.stopFindInPage) window.electronAPI.stopFindInPage();
+        return false;
+      }
+    };
+
+    // 单独处理上一个下一个按钮（PDF 也走 findInPage）
+    // 上一个 / 下一个（导航使用 findNext:true 在已有搜索会话中跳转）
+    if (searchPrev) {
+      searchPrev.addEventListener('click', () => {
+        // 防抖：防止快速连续点击导致 PDF 查看器卡死
+        const now = Date.now();
+        if (this._lastSearchTime && now - this._lastSearchTime < 800) return;
+        this._lastSearchTime = now;
+        this._searchInFile(searchInput.value, true, true);
+      });
+    }
+    if (searchNext) {
+      searchNext.addEventListener('click', () => {
+        // 防抖：防止快速连续点击导致 PDF 查看器卡死
+        const now = Date.now();
+        if (this._lastSearchTime && now - this._lastSearchTime < 800) return;
+        this._lastSearchTime = now;
+        this._searchInFile(searchInput.value, false, true);
+      });
+    }
+
+    // 关闭
+    if (searchClose) {
+      searchClose.addEventListener('click', () => {
+        searchInput.value = '';
+        this._currentSearchText = '';
+        if (searchCount) searchCount.textContent = '';
+        searchInput.blur();
+        if (this._searchProgressTimer) {
+          clearInterval(this._searchProgressTimer);
+          this._searchProgressTimer = null;
+        }
+        if (this._searchTimeout) {
+          clearTimeout(this._searchTimeout);
+          this._searchTimeout = null;
+        }
+        this._lastSearchTime = 0;
+        if (window.electronAPI?.stopFindInPage) window.electronAPI.stopFindInPage();
+        const searchBar = document.getElementById('readonly-search-bar');
+        if (searchBar) searchBar.style.display = 'none';
+      });
     }
   },
 

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
+  toggleDevTools: () => ipcRenderer.send('toggle-devtools'),
   onWindowStateChanged: (callback) => ipcRenderer.on('window-state-changed', (e, isMaximized) => callback(isMaximized)),
 
   // 笔记操作
@@ -54,6 +55,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 文件预览（应用内预览导入的文件）
   getFilePreview: (relativePath) => ipcRenderer.invoke('get-file-preview', relativePath),
+
+  // 搜索栏
+  setReadonlyVisible: (visible) => ipcRenderer.send('readonly-visible', visible),
+  onShowSearchBar: (callback) => ipcRenderer.on('show-search-bar', () => callback()),
+  removeShowSearchBar: () => ipcRenderer.removeAllListeners('show-search-bar'),
+
+  // 文件内搜索（PDF 等使用 webContents.findInPage）
+  findInPage: (data) => ipcRenderer.send('find-in-page', data),
+  stopFindInPage: (action) => ipcRenderer.send('stop-find-in-page', action),
+  onFoundInPage: (callback) => ipcRenderer.on('found-in-page', (e, result) => callback(result)),
+  removeFoundInPage: () => ipcRenderer.removeAllListeners('found-in-page'),
 
   // 事件监听
   onNewNote: (callback) => ipcRenderer.on('new-note', () => callback()),

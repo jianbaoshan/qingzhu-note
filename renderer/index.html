@@ -16,6 +16,12 @@
       <span class="titlebar__title">青竹笔记</span>
     </div>
     <div class="titlebar__controls">
+      <button class="titlebar__btn titlebar__btn--devtools" id="btn-devtools" aria-label="开发者工具" title="开发者工具 (F12)">
+        <svg width="12" height="12" viewBox="0 0 12 12">
+          <path d="M2 1h8a1 1 0 011 1v8a1 1 0 01-1 1H2a1 1 0 01-1-1V2a1 1 0 011-1z" fill="none" stroke="currentColor" stroke-width="1"/>
+          <path d="M4 4.5L6 6 4 7.5M8 4.5L6 6 8 7.5" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <button class="titlebar__btn titlebar__btn--minimize" id="btn-minimize" aria-label="最小化">
         <svg width="10" height="10" viewBox="0 0 10 10">
           <rect x="1" y="4.5" width="8" height="1" fill="currentColor"/>
@@ -164,6 +170,16 @@
             </svg>
             <span>清空回收站</span>
           </button>
+          <button class="toolbar-action-btn toolbar-action-btn--danger" id="btn-batch-delete" style="display:none">
+            <svg width="14" height="14" viewBox="0 0 16 16">
+              <path d="M2.5 4h11M5.5 4V2.5A.5.5 0 016 2h4a.5.5 0 01.5.5V4M3 4v9.5A1.5 1.5 0 004.5 15h7a1.5 1.5 0 001.5-1.5V4M6.5 7v5M9.5 7v5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>删除选中</span>
+          </button>
+          <label class="batch-select-label" id="batch-select-label" style="display:none">
+            <input type="checkbox" id="select-all-checkbox">
+            <span>全选</span>
+          </label>
         </div>
         <div class="note-list__sort">
           <label class="sort-label" for="sort-select">排序：</label>
@@ -302,6 +318,13 @@
               </div>
             </div>
             <div class="readonly__preview" id="readonly-preview"></div>
+            <div class="readonly__search-bar" id="readonly-search-bar" style="display:none">
+              <input type="text" class="readonly__search-input" id="search-input" placeholder="在文件中搜索..." onkeydown="return __searchKeydown(event)">
+              <span class="readonly__search-count" id="search-count"></span>
+              <button class="readonly__search-btn" id="search-prev" title="上一个">▲</button>
+              <button class="readonly__search-btn" id="search-next" title="下一个">▼</button>
+              <button class="readonly__search-btn readonly__search-close" id="search-close" title="关闭">✕</button>
+            </div>
           </div>
         </div>
 

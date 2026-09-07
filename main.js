@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeTheme, globalShortcut, clipboard, shell } = require('electron');
+const { app, BrowserWindow, webContents, ipcMain, dialog, Menu, Tray, nativeTheme, globalShortcut, clipboard, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { Worker } = require('worker_threads');
@@ -304,7 +304,7 @@ async function importFile(filePath, categoryId) {
   let originalFile = null;
 
   // 二进制文件（非纯文本）保存原文件
-  const binaryExts = ['.pdf', '.doc', '.docx', '.xlsx', '.xls', '.csv', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
+  const binaryExts = ['.pdf', '.doc', '.docx', '.xlsx', '.xls', '.csv', '.html', '.htm', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
   const archiveExts = ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.zst'];
   if (binaryExts.includes(ext) || archiveExts.includes(ext)) {
     const importedDir = path.join(getAttachmentsDir(), 'imported');
@@ -534,9 +534,44 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
+  // 添加菜单栏（包含开发者工具入口）
+  const menuTemplate = [
+    {
+      label: '文件',
+      submenu: [
+        { role: 'quit', label: '退出' }
+      ]
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload', label: '重新加载' },
+        { role: 'forceReload', label: '强制重新加载' },
+        { type: 'separator' },
+        { role: 'toggleDevTools', label: '开发者工具' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: '重置缩放' },
+        { role: 'zoomIn', label: '放大' },
+        { role: 'zoomOut', label: '缩小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '全屏' }
+      ]
+    }
+  ];
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
+  });
+
+  // 注册 F12 快捷键打开开发者工具（frameless 窗口可能不显示菜单栏）
+  globalShortcut.register('F12', () => {
+    if (mainWindow) mainWindow.webContents.toggleDevTools();
+  });
+  globalShortcut.register('Ctrl+Shift+I', () => {
+    if (mainWindow) mainWindow.webContents.toggleDevTools();
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });
@@ -548,9 +583,55 @@ function createWindow() {
     else mainWindow?.maximize();
   });
   ipcMain.on('window-close', () => mainWindow?.close());
+  ipcMain.on('toggle-devtools', () => mainWindow?.webContents.toggleDevTools());
 
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window-state-changed', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window-state-changed', false));
+
+  // 拦截 Ctrl+F 以支持 PDF 等 iframe 内文件的搜索
+  let readonlyVisible = false;
+  ipcMain.on('readonly-visible', (e, visible) => { readonlyVisible = visible; });
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (readonlyVisible && input.control && !input.alt && !input.shift && !input.meta && input.key.toLowerCase() === 'f') {
+      mainWindow.webContents.send('show-search-bar');
+      event.preventDefault();
+    }
+  });
+
+  // 文件内搜索（PDF 等使用 webContents.findInPage）
+  ipcMain.on('find-in-page', (e, { text, forward, findNext, matchCase }) => {
+    console.log('[MAIN find-in-page]', { text, forward, findNext, matchCase });
+    if (!text) {
+      mainWindow.webContents.stopFindInPage('clearSelection');
+      return;
+    }
+    const options = {
+      forward: forward !== false,
+      findNext: findNext !== false
+    };
+    // 只在明确传入了 matchCase 参数时才设置，避免 PDF 查看器插件异常
+    if (matchCase !== undefined) {
+      options.matchCase = matchCase === true;
+    }
+    mainWindow.webContents.findInPage(text, options);
+  });
+  ipcMain.on('stop-find-in-page', (e, action) => {
+    mainWindow.webContents.stopFindInPage(action === 'keepSelection' ? 'keepSelection' : 'clearSelection');
+  });
+  mainWindow.webContents.on('found-in-page', (event, result) => {
+    console.log('[MAIN found-in-page]', JSON.stringify(result));
+    mainWindow.webContents.send('found-in-page', result);
+  });
+
+  // PDF 查看器在子 webContents 中运行，found-in-page 事件可能被发射到子 webContents 上
+  app.on('web-contents-created', (event, wc) => {
+    wc.on('found-in-page', (event, result) => {
+      console.log('[CHILD found-in-page]', JSON.stringify(result));
+      if (mainWindow) {
+        mainWindow.webContents.send('found-in-page', result);
+      }
+    });
+  });
 }
 
 // ============ 系统托盘 ============
@@ -708,6 +789,15 @@ function setupIPC() {
     } else if (ext === '.pdf') {
       // PDF - 返回文件路径，由渲染进程用 iframe 嵌入
       return { type: 'pdf', content: fullPath.replace(/\\/g, '/') };
+    } else if (['.html', '.htm'].includes(ext)) {
+      // HTML - 读取文件内容，由渲染进程用 srcdoc 嵌入（确保同源可访问 contentDocument）
+      try {
+        const htmlContent = fs.readFileSync(fullPath, 'utf-8');
+        const dir = path.dirname(fullPath).replace(/\\/g, '/');
+        return { type: 'html_file', content: htmlContent, baseDir: dir };
+      } catch (e) {
+        return { type: 'error', content: 'HTML 文件读取失败：' + e.message };
+      }
     } else if (['.doc', '.docx'].includes(ext)) {
       // Word - 优先使用 PDF 预览（保持原始格式），回退到 mammoth HTML
       try {
