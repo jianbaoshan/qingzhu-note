@@ -516,7 +516,7 @@ function createWindow() {
     frame: false,
     transparent: false,
     backgroundColor: '#f0f0f0',
-    icon: path.join(__dirname, '青竹笔记.png'),
+    icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -540,6 +540,16 @@ function createWindow() {
     {
       label: '文件',
       submenu: [
+        {
+          label: '查找',
+          accelerator: 'CmdOrCtrl+F',
+          click: () => {
+            if (readonlyVisible && mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('show-search-bar');
+            }
+          }
+        },
+        { type: 'separator' },
         { role: 'quit', label: '退出' }
       ]
     },
@@ -650,6 +660,16 @@ function createWindow() {
 
   // 监听子 webContents（webview）的事件
   app.on('web-contents-created', (event, wc) => {
+    // 当焦点在 PDF webview 内部时，主窗口的 before-input-event 收不到按键，
+    // 需要在这里拦截 Ctrl+F 以召唤搜索框
+    wc.on('before-input-event', (event, input) => {
+      if (readonlyVisible && input.control && !input.alt && !input.shift && !input.meta && input.key.toLowerCase() === 'f') {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('show-search-bar');
+        }
+        event.preventDefault();
+      }
+    });
     wc.on('did-finish-load', () => {
       try {
         const url = wc.getURL();
@@ -669,7 +689,7 @@ function createWindow() {
 
 // ============ 系统托盘 ============
 function createTray() {
-  const iconPath = path.join(__dirname, '青竹笔记.png');
+  const iconPath = path.join(__dirname, 'icon.ico');
   try {
     tray = new Tray(iconPath);
     tray.setToolTip('青竹笔记');
