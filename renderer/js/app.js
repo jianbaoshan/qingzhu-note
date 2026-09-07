@@ -619,8 +619,8 @@ const App = window.App = {
           previewEl.style.display = 'block';
           if (fileInfo) fileInfo.style.display = 'none';
         } else if (result.type === 'pdf') {
-          // PDF：用 iframe 嵌入（Chromium 内置 PDF 查看器）
-          previewEl.innerHTML = `<iframe src="file:///${result.content}" class="pdf-viewer"></iframe>`;
+          // PDF：用 webview 嵌入（webview 是独立 webContents，PDF viewer 顶层加载时 findInPage 导航正常）
+          previewEl.innerHTML = `<webview src="file:///${result.content}" class="pdf-viewer" style="width:100%;height:100%;border:none" partition="persist:pdf-viewer"></webview>`;
           previewEl.style.display = 'block';
           if (fileInfo) fileInfo.style.display = 'none';
         } else if (result.type === 'html_file') {
@@ -1701,20 +1701,13 @@ const App = window.App = {
         const isInitialSearch = sc && sc.textContent === '搜索中...';
 
         if (isInitialSearch) {
-          // 首次搜索：使用 findNext:true（原始工作方式，PDF 查看器正确建立搜索会话并滚动到匹配）
+          // 首次搜索：使用 findNext:true 建立搜索会话
           window.electronAPI.findInPage({ text, forward: !backward, findNext: true });
           console.log('[PDF搜索] initial findInPage sent:', { text, forward: !backward });
         } else {
-          // 导航：先清除现有搜索会话，再重新搜索
-          // PDF 查看器插件不支持在现有搜索会话中通过 findNext 导航，
-          // 每次调用 findNext 都会回到第一个匹配位置。
-          // 解决方案：清除会话后，PDF 视口位置保持不变，
-          // 然后 findNext:true 会从当前视口位置开始查找下一个匹配。
-          window.electronAPI.stopFindInPage('clearSelection');
-          setTimeout(() => {
-            window.electronAPI.findInPage({ text, forward: !backward, findNext: true });
-            console.log('[PDF搜索] navigation clear+search sent:', { text, forward: !backward });
-          }, 100);
+          // 导航：使用 findNext:true 在已有搜索会话中跳转
+          window.electronAPI.findInPage({ text, forward: !backward, findNext: true });
+          console.log('[PDF搜索] navigation findInPage sent:', { text, forward: !backward });
         }
 
         // 显示搜索耗时进度（仅首次搜索显示进度条）

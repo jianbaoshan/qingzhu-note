@@ -516,12 +516,13 @@ function createWindow() {
     frame: false,
     transparent: false,
     backgroundColor: '#f0f0f0',
-    icon: path.join(__dirname, 'assets', 'icon.png'),
+    icon: path.join(__dirname, '青竹笔记.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     },
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -598,33 +599,65 @@ function createWindow() {
     }
   });
 
+  // 查找 PDF 查看器的 webContents（webview 加载 PDF 时是独立 webContents）
+  function findPdfWebContents() {
+    const allWc = webContents.getAllWebContents();
+    for (const wc of allWc) {
+      try {
+        const url = wc.getURL();
+        if (url && url.endsWith('.pdf') && wc !== mainWindow.webContents && !url.startsWith('devtools://')) {
+          return wc;
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return null;
+  }
+
   // 文件内搜索（PDF 等使用 webContents.findInPage）
   ipcMain.on('find-in-page', (e, { text, forward, findNext, matchCase }) => {
     console.log('[MAIN find-in-page]', { text, forward, findNext, matchCase });
     if (!text) {
       mainWindow.webContents.stopFindInPage('clearSelection');
+      const pdfWc = findPdfWebContents();
+      if (pdfWc) pdfWc.stopFindInPage('clearSelection');
       return;
     }
     const options = {
       forward: forward !== false,
       findNext: findNext !== false
     };
-    // 只在明确传入了 matchCase 参数时才设置，避免 PDF 查看器插件异常
     if (matchCase !== undefined) {
       options.matchCase = matchCase === true;
     }
-    mainWindow.webContents.findInPage(text, options);
+    // 优先在 PDF webview 的 webContents 上搜索（PDF viewer 顶层加载时 findInPage 导航正常）
+    const pdfWc = findPdfWebContents();
+    if (pdfWc) {
+      console.log('[MAIN] Using PDF webContents for findInPage');
+      pdfWc.findInPage(text, options);
+    } else {
+      mainWindow.webContents.findInPage(text, options);
+    }
   });
   ipcMain.on('stop-find-in-page', (e, action) => {
     mainWindow.webContents.stopFindInPage(action === 'keepSelection' ? 'keepSelection' : 'clearSelection');
+    const pdfWc = findPdfWebContents();
+    if (pdfWc) pdfWc.stopFindInPage(action === 'keepSelection' ? 'keepSelection' : 'clearSelection');
   });
   mainWindow.webContents.on('found-in-page', (event, result) => {
     console.log('[MAIN found-in-page]', JSON.stringify(result));
     mainWindow.webContents.send('found-in-page', result);
   });
 
-  // PDF 查看器在子 webContents 中运行，found-in-page 事件可能被发射到子 webContents 上
+  // 监听子 webContents（webview）的事件
   app.on('web-contents-created', (event, wc) => {
+    wc.on('did-finish-load', () => {
+      try {
+        const url = wc.getURL();
+        if (url && url.endsWith('.pdf') && wc !== mainWindow.webContents && !url.startsWith('devtools://')) {
+          console.log('[MAIN] PDF webview loaded:', url);
+        }
+      } catch (e) { /* ignore */ }
+    });
     wc.on('found-in-page', (event, result) => {
       console.log('[CHILD found-in-page]', JSON.stringify(result));
       if (mainWindow) {
@@ -636,7 +669,7 @@ function createWindow() {
 
 // ============ 系统托盘 ============
 function createTray() {
-  const iconPath = path.join(__dirname, 'assets', 'icon.png');
+  const iconPath = path.join(__dirname, '青竹笔记.png');
   try {
     tray = new Tray(iconPath);
     tray.setToolTip('青竹笔记');
