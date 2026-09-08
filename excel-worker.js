@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { filePath, maxRows } = workerData;
+const asData = workerData.format === 'data';
 
 try {
   // 检查文件大小
@@ -15,6 +16,46 @@ try {
   }
 
   const workbook = xlsx.readFile(filePath, { cellStyles: true, cellFormula: false });
+
+  // 结构化数据格式：供应用内 Excel 交互表格组件（x-spreadsheet）使用
+  if (asData) {
+    const dataSheets = [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      let totalRows = 0;
+      const ref = sheet['!ref'];
+      if (ref) {
+        const range = xlsx.utils.decode_range(ref);
+        totalRows = range.e.r - range.s.r + 1;
+        if (totalRows > maxRows) {
+          range.e.r = range.s.r + maxRows - 1;
+          sheet['!ref'] = xlsx.utils.encode_range(range);
+        }
+      }
+      const json = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false });
+      const rowsObj = {};
+      json.forEach((rowArr, r) => {
+        if (!Array.isArray(rowArr)) return;
+        const cells = {};
+        rowArr.forEach((cellVal, c) => {
+          const v = (cellVal === undefined || cellVal === null) ? '' : cellVal;
+          cells[c] = { text: String(v), value: v };
+        });
+        rowsObj[r] = { cells };
+      });
+      const merges = (sheet['!merges'] || []).map((m) => xlsx.utils.encode_range(m));
+      const cols = [];
+      if (sheet['!cols']) {
+        sheet['!cols'].forEach((col) => {
+          cols.push({ width: col.wpx || (col.wch ? col.wch * 8 : 80) });
+        });
+      }
+      dataSheets.push({ name: sheetName, rows: rowsObj, merges, cols });
+    }
+    parentPort.postMessage({ type: 'excel_data', sheets: dataSheets });
+    return;
+  }
+
   let html = '';
 
   for (const sheetName of workbook.SheetNames) {

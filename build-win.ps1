@@ -12,16 +12,16 @@ $env:ELECTRON_CACHE = Join-Path (Get-Location) ".electron-cache"
 $env:ELECTRON_BUILDER_CACHE = Join-Path (Get-Location) ".electron-builder-cache"
 
 $appDir = Join-Path (Get-Location) "release\win-unpacked"
-# Locate the app main exe (skip Electron's own helper exes)
-$exe = Get-ChildItem $appDir -Filter "*.exe" | Where-Object { $_.Name -notmatch "^(electron|.*Helper|.*Unins.*)" } | Select-Object -First 1 -ExpandProperty FullName
-if (-not $exe) { throw "FAIL: main exe not found in $appDir" }
-
 $icon = Join-Path (Get-Location) "icon.ico"
 $rcedit = Join-Path (Get-Location) "node_modules\rcedit\bin\rcedit-x64.exe"
 
 Write-Host "==> [1/3] pack win-unpacked"
 npx electron-builder --win --dir --publish never
 if ($LASTEXITCODE -ne 0) { throw "FAIL: pack step" }
+
+# Locate the app main exe (skip Electron's own helper exes)  -- 需在打包完成后定位
+$exe = Get-ChildItem $appDir -Filter "*.exe" | Where-Object { $_.Name -notmatch "^(electron|.*Helper|.*Unins.*)" } | Select-Object -First 1 -ExpandProperty FullName
+if (-not $exe) { throw "FAIL: main exe not found in $appDir" }
 
 Write-Host "==> [2/3] set icon into exe: $exe"
 & $rcedit $exe --set-icon $icon

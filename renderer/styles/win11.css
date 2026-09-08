@@ -118,6 +118,8 @@ html, body {
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease;
   position: relative;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .titlebar__btn:hover {
@@ -1430,6 +1432,106 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* x-spreadsheet 交互式 Excel 表格宿主容器 */
+.xspreadsheet-host {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 保持组件默认布局，确保表格内容正常渲染 */
+}
+
+/* Excel 行/列快速跳转栏 */
+.excel-jump-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 12px;
+  color: #333;
+  flex: 0 0 auto;
+}
+.excel-jump-bar input {
+  width: 64px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+}
+.excel-jump-bar input:focus {
+  border-color: #217346;
+}
+.excel-jump-bar button {
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 4px;
+  background: #217346;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.excel-jump-bar button:hover {
+  background: #1a5c39;
+}
+
+/* x-spreadsheet 底部工作表栏 —— Excel/WPS 风格 */
+.x-spreadsheet-bottombar {
+  height: 36px;
+  padding: 0;
+  background: #eef1f3;
+  border-top: 1px solid #d2d6d9;
+  text-align: left;
+}
+.x-spreadsheet-bottombar .x-spreadsheet-menu {
+  display: flex;
+  align-items: flex-end;
+  height: 36px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.x-spreadsheet-bottombar .x-spreadsheet-menu > li {
+  line-height: 26px;
+  height: 30px;
+  margin: 6px 2px 0 0;
+  padding: 0 18px;
+  border-right: 1px solid #c5cbd0;
+  border-left: 1px solid #c5cbd0;
+  color: #202124;
+  font-size: 13px;
+  font-weight: 400;
+  background: #dfe4e8;
+  border-radius: 4px 4px 0 0;
+  border-top: 2px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.x-spreadsheet-bottombar .x-spreadsheet-menu > li:hover {
+  background: #edf0f3;
+}
+.x-spreadsheet-bottombar .x-spreadsheet-menu > li.active {
+  background: #ffffff;
+  border-top: 2px solid #1a73e8;
+  color: #1a73e8;
+  font-weight: 600;
+}
+/* 左侧「新增 +」「⋯」控件按钮：保持图标样式 */
+.x-spreadsheet-bottombar .x-spreadsheet-menu > li:first-child {
+  margin: 6px 4px 0 4px;
+  padding: 0 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
 }
 
 /* 缩放工具栏 */

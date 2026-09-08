@@ -580,12 +580,16 @@ const App = window.App = {
     fileNameEl.textContent = fileName;
 
     // 更新 banner 提示文字
-    const banner = readonly.querySelector('.readonly__banner span');
+    const bannerRow = readonly.querySelector('.readonly__banner');
+    const banner = bannerRow ? bannerRow.querySelector('span') : null;
+    if (bannerRow) bannerRow.style.display = 'block';
     if (banner) {
       if (['doc', 'docx'].includes(ext)) {
         banner.textContent = '此笔记为导入文件，已通过 Word 转换为 PDF 预览，保留原始格式';
       } else if (['xlsx', 'xls'].includes(ext)) {
-        banner.textContent = '此笔记为导入文件，已通过 Excel 转换为 PDF 预览，保留原始格式';
+        // Excel 以原始表格格式交互预览，不显示导入提示
+        if (bannerRow) bannerRow.style.display = 'none';
+        banner.textContent = '';
       } else if (['html', 'htm'].includes(ext)) {
         banner.textContent = '此笔记为导入文件，通过 iframe 直接渲染 HTML 预览';
       } else {
@@ -623,6 +627,52 @@ const App = window.App = {
           previewEl.innerHTML = `<webview src="file:///${result.content}" class="pdf-viewer" style="width:100%;height:100%;border:none" partition="persist:pdf-viewer"></webview>`;
           previewEl.style.display = 'block';
           if (fileInfo) fileInfo.style.display = 'none';
+        } else if (result.type === 'excel_data') {
+          // Excel：用 x-spreadsheet 交互表格组件展示（应用内 Excel 格式）
+          const ROWS = 2000;
+          const COLS = 60;
+          // 固定画布尺寸：数据之外保留大片空白缓冲，可一直向下/向右拖动（类似完整 Excel 画布）
+          previewEl.innerHTML = `
+            <div class="excel-jump-bar">
+              <span>行</span><input id="jump-row" type="number" min="1" max="${ROWS}" value="1">
+              <span>列</span><input id="jump-col" type="number" min="1" max="${COLS}" value="1">
+              <button id="jump-go" type="button">跳转</button>
+            </div>
+            <div class="xspreadsheet-host" id="xspreadsheet-host"></div>`;
+          previewEl.style.display = 'block';
+          if (fileInfo) fileInfo.style.display = 'none';
+          const host = document.getElementById('xspreadsheet-host');
+          if (host && window.x_spreadsheet) {
+            let sheet = new window.x_spreadsheet(host, {
+              mode: 'read',
+              showToolbar: true,
+              showGrid: true,
+              showContextmenu: true,
+              row: { len: ROWS, height: 25 },
+              col: { len: COLS, width: 90 },
+            });
+            sheet.loadData(result.sheets || []);
+            // 行/列快速跳转：直接滚动到底部/右侧滚动容器（与鼠标滚轮滚动的容器一致）
+            const jump = () => {
+              const r = ((parseInt(document.getElementById('jump-row').value, 10) || 1) - 1);
+              const c = ((parseInt(document.getElementById('jump-col').value, 10) || 1) - 1);
+              const top = Math.max(0, r) * 25;
+              const left = Math.max(0, c) * 90;
+              const hostEl = document.getElementById('xspreadsheet-host');
+              if (hostEl) {
+                const v = hostEl.querySelector('.x-spreadsheet-scrollbar.vertical');
+                if (v && 'scrollTop' in v) v.scrollTop = top;
+                const h = hostEl.querySelector('.x-spreadsheet-scrollbar.horizontal');
+                if (h && 'scrollLeft' in h) h.scrollLeft = left;
+              }
+            };
+            document.getElementById('jump-go').onclick = jump;
+            ['jump-row', 'jump-col'].forEach((id) => {
+              document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') jump(); });
+            });
+          } else if (host) {
+            host.innerHTML = '<div style="padding:40px;text-align:center;color:#888">表格组件加载失败</div>';
+          }
         } else if (result.type === 'html_file') {
           // HTML：用 srcdoc 嵌入（确保同源，可访问 contentDocument），带缩放工具栏
           const zoomLevel = this._currentZoom || 100;
@@ -1218,6 +1268,11 @@ const App = window.App = {
 
   // ============ 事件委托（兜底方案） ============
   setupEventDelegation() {
+    // 幂等守卫：防止 init 被多次触发导致事件重复绑定
+    // （重复绑定会让最大化按钮一次点击触发两次 maximize(un)maximize 相互抵消）
+    if (App._delegationBound) return;
+    App._delegationBound = true;
+
     // 侧边栏事件委托
     const sidebar = document.querySelector('.sidebar');
     if (sidebar) {

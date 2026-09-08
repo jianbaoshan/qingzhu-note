@@ -525,11 +525,6 @@ function createWindow() {
       webviewTag: true
     },
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#00000000',
-      symbolColor: '#000000',
-      height: 32
-    },
     show: false
   });
 
@@ -795,7 +790,7 @@ function setupIPC() {
     return path.join(__dirname, 'excel-worker.js');
   }
 
-  function processExcelInWorker(filePath, maxRows = 2000, timeout = 20000) {
+  function processExcelInWorker(filePath, maxRows = 2000, timeout = 20000, format = 'html') {
     return new Promise((resolve, reject) => {
       let worker = null;
       const timer = setTimeout(() => {
@@ -805,7 +800,7 @@ function setupIPC() {
         reject(new Error('处理超时，文件过大'));
       }, timeout);
       try {
-        worker = new Worker(getWorkerPath(), { workerData: { filePath, maxRows } });
+        worker = new Worker(getWorkerPath(), { workerData: { filePath, maxRows, format } });
         worker.on('message', (result) => {
           clearTimeout(timer);
           resolve(result);
@@ -892,21 +887,13 @@ function setupIPC() {
         }
       }
     } else if (['.xlsx', '.xls'].includes(ext)) {
-      // Excel - 优先使用 PDF 预览（保持原始格式），回退到工作线程 HTML
+      // Excel - 使用工作线程解析为结构化数据，应用内用 Excel 交互表格组件展示
       try {
         const stat = fs.statSync(fullPath);
         if (stat.size > 50 * 1024 * 1024) {
           return { type: 'error', content: '文件过大（超过 50MB），无法预览，请使用外部程序打开' };
         }
-        // 尝试 PDF 转换
-        try {
-          const pdfPath = await convertXlsxToPdf(fullPath);
-          return { type: 'pdf', content: pdfPath.replace(/\\/g, '/') };
-        } catch (pdfError) {
-          console.warn('Excel PDF 转换失败，回退到工作线程:', pdfError.message);
-        }
-        // 回退到工作线程处理
-        const result = await processExcelInWorker(fullPath);
+        const result = await processExcelInWorker(fullPath, 2000, 20000, 'data');
         return result;
       } catch (e) {
         return { type: 'error', content: 'Excel 文件预览失败：' + e.message };

@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: file:;">
   <title>青竹笔记</title>
   <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="vendor/xspreadsheet/xspreadsheet.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@9.1.2/marked.min.js"></script>
 </head>
 <body>
@@ -599,19 +600,6 @@ function hello() {
 
       // 侧边栏按钮和导航栏已在 app.js 中通过 bindEvents() 和 setupEventDelegation() 处理
       // 此处不再重复绑定，避免重复触发
-
-      // 窗口控制按钮
-      var titlebar = document.querySelector('.titlebar');
-      if (titlebar) {
-        titlebar.addEventListener('click', function(e) {
-          var target = e.target.closest('[id]');
-          if (!target) return;
-          var id = target.id;
-          if (id === 'btn-minimize' && window.electronAPI) { e.preventDefault(); window.electronAPI.minimize(); }
-          else if (id === 'btn-maximize' && window.electronAPI) { e.preventDefault(); window.electronAPI.maximize(); }
-          else if (id === 'btn-close' && window.electronAPI) { e.preventDefault(); window.electronAPI.close(); }
-        });
-      }
     })();
   </script>
 
@@ -645,6 +633,8 @@ function hello() {
     </div>
   </div>
 
+  <script src="vendor/xspreadsheet/xspreadsheet.js"></script>
+  <script src="vendor/xspreadsheet/locale/zh-cn.js" onerror="console.warn('xspreadsheet locale 加载失败')"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

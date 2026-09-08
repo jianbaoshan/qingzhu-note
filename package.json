@@ -1,7 +1,7 @@
 {
   "name": "qingzhu-notes",
   "productName": "青竹笔记",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "青竹笔记 - 轻量级可视化笔记软件",
   "main": "main.js",
   "author": "",
@@ -22,7 +22,8 @@
   "devDependencies": {
     "electron": "^43.6.0",
     "electron-builder": "^24.9.1",
-    "rcedit": "^5.0.1"
+    "rcedit": "^5.0.1",
+    "x-data-spreadsheet": "^1.1.9"
   },
   "build": {
     "appId": "com.qingzhu.notes",
@@ -64,6 +65,10 @@
       {
         "from": "excel-worker.js",
         "to": "."
+      },
+      {
+        "from": "node_modules/xlsx",
+        "to": "node_modules/xlsx"
       }
     ]
   }
