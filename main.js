@@ -528,6 +528,11 @@ function createWindow() {
     show: false
   });
 
+  // 抓取渲染进程控制台输出（错误排查用，正式发布可移除）
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 2) console.log(`[RENDERER ${level}] ${message} (${sourceId}:${line})`);
+  });
+
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // 添加菜单栏（包含开发者工具入口）
@@ -835,8 +840,13 @@ function setupIPC() {
       // 图片 - 返回文件路径，由渲染进程显示
       return { type: 'image', content: fullPath.replace(/\\/g, '/') };
     } else if (ext === '.pdf') {
-      // PDF - 返回文件路径，由渲染进程用 iframe 嵌入
-      return { type: 'pdf', content: fullPath.replace(/\\/g, '/') };
+      // PDF - 返回文件路径与二进制数据，由渲染进程用 PDF.js 渲染（支持主题跟随）
+      try {
+        const buf = fs.readFileSync(fullPath);
+        return { type: 'pdf', content: fullPath.replace(/\\/g, '/'), data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
+      } catch (e) {
+        return { type: 'error', content: 'PDF 文件读取失败：' + e.message };
+      }
     } else if (['.html', '.htm'].includes(ext)) {
       // HTML - 读取文件内容，由渲染进程用 srcdoc 嵌入（确保同源可访问 contentDocument）
       try {

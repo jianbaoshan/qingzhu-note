@@ -623,10 +623,16 @@ const App = window.App = {
           previewEl.style.display = 'block';
           if (fileInfo) fileInfo.style.display = 'none';
         } else if (result.type === 'pdf') {
-          // PDF：用 webview 嵌入（webview 是独立 webContents，PDF viewer 顶层加载时 findInPage 导航正常）
-          previewEl.innerHTML = `<webview src="file:///${result.content}" class="pdf-viewer" style="width:100%;height:100%;border:none" partition="persist:pdf-viewer"></webview>`;
-          previewEl.style.display = 'block';
+          // PDF：用 PDF.js 渲染（支持主题跟随 + 文本搜索）
+          previewEl.innerHTML = '';
+          previewEl.style.display = 'flex';
           if (fileInfo) fileInfo.style.display = 'none';
+          try {
+            await window.PDFPreview.render(previewEl, result.data);
+          } catch (err) {
+            console.error('[PDF] PDF.js 渲染失败:', err);
+            previewEl.innerHTML = `<div class="file-preview-error">PDF 预览失败：${(err && err.message) || err}</div>`;
+          }
         } else if (result.type === 'excel_data') {
           // Excel：用 x-spreadsheet 交互表格组件展示（应用内 Excel 格式）
           const ROWS = 2000;
@@ -1747,52 +1753,21 @@ const App = window.App = {
     if (!text) return;
     this._currentSearchText = text;
 
-    // PDF：使用 Electron 的 webContents.findInPage (通过 IPC)
+    // PDF：使用 PDF.js 文本层搜索（应用内自绘渲染）
     if (this._currentPreviewType === 'pdf') {
       console.log('[PDF搜索] _searchInFile called:', { text, backward, findNext, time: Date.now() });
-      if (window.electronAPI?.findInPage) {
-        // 判断是首次搜索还是导航：首次搜索时 search-count 显示"搜索中..."
-        const sc = document.getElementById('search-count');
-        const isInitialSearch = sc && sc.textContent === '搜索中...';
-
-        if (isInitialSearch) {
-          // 首次搜索：使用 findNext:true 建立搜索会话
-          window.electronAPI.findInPage({ text, forward: !backward, findNext: true });
-          console.log('[PDF搜索] initial findInPage sent:', { text, forward: !backward });
-        } else {
-          // 导航：使用 findNext:true 在已有搜索会话中跳转
-          window.electronAPI.findInPage({ text, forward: !backward, findNext: true });
-          console.log('[PDF搜索] navigation findInPage sent:', { text, forward: !backward });
-        }
-
-        // 显示搜索耗时进度（仅首次搜索显示进度条）
-        if (isInitialSearch) {
-          if (this._searchTimeout) clearTimeout(this._searchTimeout);
-          if (this._searchProgressTimer) clearInterval(this._searchProgressTimer);
-          let elapsed = 0;
-          this._searchProgressTimer = setInterval(() => {
-            elapsed++;
-            if (sc && sc.textContent === '搜索中...') {
-              sc.textContent = `搜索中 (${elapsed}s)`;
-            }
-            if (elapsed >= 15) {
-              clearInterval(this._searchProgressTimer);
-              this._searchProgressTimer = null;
-              if (sc && sc.textContent && sc.textContent.includes('搜索中')) {
-                sc.textContent = '搜索超时';
-              }
-            }
-          }, 1000);
-          this._searchTimeout = setTimeout(() => {
-            if (sc && sc.textContent && sc.textContent.includes('搜索中')) {
-              sc.textContent = '搜索超时';
-            }
-            if (this._searchProgressTimer) {
-              clearInterval(this._searchProgressTimer);
-              this._searchProgressTimer = null;
-            }
-          }, 16000);
-        }
+      const sc = document.getElementById('search-count');
+      if (sc) sc.textContent = '搜索中...';
+      if (window.PDFPreview && text) {
+        window.PDFPreview.find(text, !backward).then((r) => {
+          if (!r || !r.matches) {
+            if (sc) sc.textContent = '未找到';
+            return;
+          }
+          if (sc) sc.textContent = `${r.current}/${r.matches}`;
+        });
+      } else {
+        if (sc) sc.textContent = '未找到';
       }
       return;
     }
@@ -1887,6 +1862,14 @@ const App = window.App = {
         // 首次搜索使用 findNext:true（PDF 查看器需要 findNext:true 才能正确建立搜索会话）
         app._searchInFile(searchInput.value, e.shiftKey, true);
         return false;
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // 搜索框内上下键：在匹配结果中跳转（PDF 与普通查看器共用 _searchInFile）
+        if (app._currentPreviewType === 'pdf' && window.PDFPreview) {
+          e.preventDefault();
+          if (!app._currentSearchText) return false;
+          app._searchInFile(app._currentSearchText, e.key === 'ArrowUp', true);
+          return false;
+        }
       } else if (e.key === 'Escape') {
         searchInput.value = '';
         app._currentSearchText = '';

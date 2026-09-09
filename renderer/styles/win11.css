@@ -1603,6 +1603,64 @@ body {
   background: #fff;
 }
 
+/* PDF.js 预览（应用内自绘渲染，主题跟随 data-theme） */
+.pdfjs-scroller {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: auto;
+  background: var(--bg-secondary, #f0f0f0);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pdfjs-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+.pdfjs-page {
+  position: relative;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  transition: box-shadow 0.2s ease;
+  flex: 0 0 auto;
+}
+.pdfjs-page--search-target {
+  box-shadow: 0 0 0 2px var(--accent, #0078d4);
+}
+.pdfjs-canvas {
+  display: block;
+  border-radius: 2px;
+}
+.pdfjs-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.2;
+  line-height: 1;
+  color: transparent;
+}
+.pdfjs-text-layer span {
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0 0;
+}
+[data-theme="dark"] .pdfjs-scroller {
+  background: #1a1a1a;
+  border-color: var(--border);
+}
+/* 暗色主题下将 PDF 内容反色（白底黑字 → 黑底白字），实现内容区随主题变暗 */
+[data-theme="dark"] .pdfjs-page {
+  background: #1e1e1e;
+}
+[data-theme="dark"] .pdfjs-page .pdfjs-canvas {
+  filter: invert(0.92) hue-rotate(180deg);
+}
+
 /* 搜索栏 */
 .readonly__search-bar {
   display: flex;

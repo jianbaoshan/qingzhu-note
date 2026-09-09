@@ -16,6 +16,7 @@
     "mammoth": "^1.6.0",
     "marked": "^9.1.2",
     "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^3.11.174",
     "tesseract.js": "^5.0.3",
     "xlsx": "^0.18.5"
   },
