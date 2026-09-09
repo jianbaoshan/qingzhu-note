@@ -528,11 +528,6 @@ function createWindow() {
     show: false
   });
 
-  // 抓取渲染进程控制台输出（错误排查用，正式发布可移除）
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    if (level >= 2) console.log(`[RENDERER ${level}] ${message} (${sourceId}:${line})`);
-  });
-
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // 添加菜单栏（包含开发者工具入口）
@@ -860,7 +855,8 @@ function setupIPC() {
       // Word - 优先使用 PDF 预览（保持原始格式），回退到 mammoth HTML
       try {
         const pdfPath = await convertDocxToPdf(fullPath);
-        return { type: 'pdf', content: pdfPath.replace(/\\/g, '/') };
+        const buf = fs.readFileSync(pdfPath);
+        return { type: 'pdf', content: pdfPath.replace(/\\/g, '/'), data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
       } catch (pdfError) {
         console.warn('Word PDF 转换失败，回退到 mammoth:', pdfError.message);
         // 回退到 mammoth

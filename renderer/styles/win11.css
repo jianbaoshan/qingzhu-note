@@ -65,7 +65,8 @@ html, body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1000;
+  /* 需高于登录遮罩(9999)等全屏遮罩层，保证标题栏关闭按钮始终可点击 */
+  z-index: 10000;
   height: var(--titlebar-height);
   display: flex;
   align-items: center;
