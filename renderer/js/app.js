@@ -547,6 +547,9 @@ const App = window.App = {
     const editorPanes = document.getElementById('editor-panes');
     if (!readonly) return;
 
+    // 导入的非 Markdown 文件只读预览：隐藏编辑器顶部的 编辑/预览/分栏 三个标签
+    this._setTabsVisibility(false);
+
     // 隐藏编辑区域，显示只读视图
     readonly.style.display = 'flex';
     if (editorPanes) {
@@ -813,6 +816,8 @@ const App = window.App = {
   },
 
   hideReadonlyView() {
+    // 返回 Markdown 编辑器：恢复显示 编辑/预览/分栏 三个标签
+    this._setTabsVisibility(true);
     const readonly = document.getElementById('editor-readonly');
     const editorPanes = document.getElementById('editor-panes');
     if (readonly) readonly.style.display = 'none';
@@ -828,6 +833,14 @@ const App = window.App = {
     this._currentSearchText = '';
     // 通知主进程只读视图已隐藏
     if (window.electronAPI?.setReadonlyVisible) window.electronAPI.setReadonlyVisible(false);
+  },
+
+  // ============ 编辑区顶部标签显示控制 ============
+  // 编辑/预览/分栏 三个标签（.editor__tabs 内的 .editor__tab）
+  // 仅在普通 Markdown 笔记下显示；预览导入的非 Markdown 文件时隐藏
+  _setTabsVisibility(visible) {
+    const tabs = document.querySelector('.editor__tabs');
+    if (tabs) tabs.style.display = visible ? 'flex' : 'none';
   },
 
   // ============ 文件预览缩放控制 ============
