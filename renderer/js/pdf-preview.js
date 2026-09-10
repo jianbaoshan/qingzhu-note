@@ -67,6 +67,14 @@
       this._outline = null;        // 书签大纲数据
       this._outlineToggle = null;  // 书签开关按钮
       this._outlinePanel = null;   // 大纲面板
+      this._outlineResizer = null; // 宽度拖拽手柄
+      this._outlineResizeMove = null; // 拖拽中 move 处理（便于 destroy 清理）
+      this._outlineResizeUp = null;   // 拖拽结束 up 处理
+      this._pageNav = null;   // 页码跳转条（scrollEl 子节点，随其一并移除）
+      this._pageInput = null; // 页码输入框
+      this._pageBtn = null;   // 跳转按钮
+      this._curPageEl = null; // “第 X 页”指示
+      this._totalPageEl = null; // “共 N 页”指示
     }
 
     // 载入并渲染 PDF，data 为 ArrayBuffer
@@ -140,6 +148,8 @@
           requestAnimationFrame(() => {
             this._rafPending = false;
             this._scheduleLazyRender(isStale);
+            // 滚动时同步更新“当前第 X 页”指示
+            this._updatePageIndicator();
           });
         };
         this.scrollEl.addEventListener('scroll', this._onScroll, { passive: true });
@@ -154,6 +164,9 @@
         this.scrollEl.addEventListener('wheel', this._onWheel, { passive: false });
 
         this._scheduleLazyRender(isStale);
+
+        // 初始化页码跳转条（底部，随 scrollEl 移除）
+        this._initPageNav();
 
         // 加载 PDF 书签大纲并构建侧边栏（失败静默忽略，不影响正文渲染）
         await this._initOutline(isStale);
@@ -251,37 +264,114 @@
         panel.appendChild(empty);
       }
 
+      // 右侧竖向拖拽手柄：按住左右拖动即可实时调整面板宽度
+      const resizer = document.createElement('div');
+      resizer.className = 'pdfjs-outline-resizer';
+      resizer.title = '拖动调整宽度';
+      panel.appendChild(resizer);
+
       this.scrollEl.appendChild(toggle);
       this.scrollEl.appendChild(panel);
       this._outlineToggle = toggle;
       this._outlinePanel = panel;
+      this._outlineResizer = resizer;
 
       // 开关：反复点击可展开 / 收起
       toggle.addEventListener('click', () => {
         panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
       });
+
+      // 手柄：pointerdown 开始拖拽（move/up 挂 document 全局）
+      resizer.addEventListener('pointerdown', (e) => this._startOutlineResize(e));
     }
 
-    // 递归渲染大纲条目为带缩进的按钮列表
+    // 开始拖拽调整大纲面板宽度
+    _startOutlineResize(e) {
+      const panel = this._outlinePanel;
+      if (!panel) return;
+      e.preventDefault();
+
+      const startX = e.clientX;
+      const startW = panel.getBoundingClientRect().width;
+      // 上限：取面板所在滚动容器的 80%，且不超过 800px（兼容极宽屏）
+      const containerW = (this.scrollEl && this.scrollEl.clientWidth) || (this.container && this.container.clientWidth) || window.innerWidth;
+      const minW = 180;
+      const maxW = Math.min(containerW * 0.8, 800);
+
+      // 拖拽期间覆盖 CSS 的 max-width:60%，避免上限被样式拦截
+      panel.style.maxWidth = 'none';
+
+      // 拖拽过程禁止选中文本，避免残留选区
+      const onMove = (ev) => {
+        ev.preventDefault();
+        let w = startW + (ev.clientX - startX);
+        w = Math.max(minW, Math.min(maxW, w));
+        panel.style.width = w + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.body.style.userSelect = '';
+        this._outlineResizeMove = null;
+        this._outlineResizeUp = null;
+      };
+
+      // 对文档级 user-select 生效（仅拖拽期间），避免拖到面板外仍选中正文
+      document.body.style.userSelect = 'none';
+      document.addEventListener('pointermove', onMove, { passive: false });
+      document.addEventListener('pointerup', onUp);
+      this._outlineResizeMove = onMove;
+      this._outlineResizeUp = onUp;
+    }
+
+    // 递归渲染大纲条目为带缩进的按钮列表。
+    // 有子书签的父条目：按钮 + 紧跟其后的「子级容器」（默认收起 display:none），点击只切换展开/收起、不跳转；
+    // 无子书签的叶子条目：直接渲染按钮，点击照常跳转。
     _renderOutlineTree(containerEl, items, depth, budget) {
       if (!items || !items.length) return;
-      if (depth >= 6 || budget.count >= 200) return; // 深度/数量上限
+      if (depth >= 20 || budget.count >= 2000) return; // 深度/数量上限（放宽以保证书签完整）
       for (let i = 0; i < items.length; i++) {
-        if (budget.count >= 200) return;
+        if (budget.count >= 2000) return;
         budget.count++;
         const item = items[i];
+        const hasChildren = !!(item && item.items && item.items.length);
         const btn = document.createElement('button');
         btn.className = 'pdfjs-outline-item';
         btn.type = 'button';
         btn.style.paddingLeft = (8 + depth * 14) + 'px'; // 按层级缩进
         btn.textContent = item && item.title ? item.title : '(无标题)';
-        btn.addEventListener('click', () => this._navigateOutlineDest(item));
-        containerEl.appendChild(btn);
-        // 递归子条目
-        if (item && item.items && item.items.length) {
-          this._renderOutlineTree(containerEl, item.items, depth + 1, budget);
+        if (hasChildren) {
+          // 父条目：前置展开提示符，点击仅切换子树显隐
+          const marker = document.createElement('span');
+          marker.className = 'pdfjs-outline-marker';
+          marker.setAttribute('aria-hidden', 'true');
+          marker.textContent = '\u25b8'; // ▸（展开时经 CSS 旋转为 ▾）
+          btn.classList.add('pdfjs-outline-item--has-children');
+          btn.addEventListener('click', () => this._toggleOutlineItem(btn));
+          containerEl.appendChild(btn);
+          btn.insertBefore(marker, btn.firstChild);
+          // 子级容器（默认折叠：初始 display:none 由 CSS 控制），紧跟父按钮插入，便于 _toggleOutlineItem 用 nextElementSibling 定位
+          const children = document.createElement('div');
+          children.className = 'pdfjs-outline-children';
+          containerEl.appendChild(children);
+          this._renderOutlineTree(children, item.items, depth + 1, budget);
+        } else {
+          // 叶子条目：点击跳转
+          btn.addEventListener('click', () => this._navigateOutlineDest(item));
+          containerEl.appendChild(btn);
         }
       }
+    }
+
+    // 切换父条目的子级容器显隐（展开/收起），不触发跳转
+    _toggleOutlineItem(btn) {
+      if (!btn || !btn.parentElement) return;
+      // 子级容器紧跟父按钮插入，故取 nextElementSibling
+      const children = btn.nextElementSibling;
+      if (!children || !children.classList || !children.classList.contains('pdfjs-outline-children')) return;
+      const isOpen = children.style.display === 'block';
+      children.style.display = isOpen ? 'none' : 'block';
+      btn.classList.toggle('pdfjs-outline-item--open', !isOpen);
     }
 
     // 点击条目 → 解析 dest 为页码并滚动定位
@@ -330,6 +420,94 @@
       // 跳转后保留侧边栏展开状态，方便继续点击其它书签
     }
 
+    // ============ 页码跳转条 ============
+    // 底部 fixed 的页码输入/指示控件：输入 1..N 页码回车或点按钮即跳转，滚动时同步显示当前页
+    _initPageNav() {
+      if (!this.scrollEl || this._pageNav) return;
+      this._injectOutlineStyle();
+      const numPages = (this.pdf && this.pdf.numPages) || this.pages.length || 0;
+
+      const nav = document.createElement('div');
+      nav.className = 'pdfjs-page-nav';
+
+      const cur = document.createElement('span');
+      cur.className = 'pdfjs-page-nav-cur';
+      cur.textContent = '第 1 页';
+
+      const total = document.createElement('span');
+      total.className = 'pdfjs-page-nav-total';
+      total.textContent = numPages ? `/ 共 ${numPages} 页` : '';
+
+      const input = document.createElement('input');
+      input.className = 'pdfjs-page-nav-input';
+      input.type = 'number';
+      input.min = '1';
+      input.max = String(numPages || 1);
+      input.value = '1';
+      input.step = '1';
+      input.title = numPages ? `输入 1 ~ ${numPages} 中的页码后回车跳转` : '页码';
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); this._pageJump(); }
+      });
+
+      const btn = document.createElement('button');
+      btn.className = 'pdfjs-page-nav-btn';
+      btn.type = 'button';
+      btn.textContent = '跳转';
+      btn.addEventListener('click', () => this._pageJump());
+
+      nav.appendChild(cur);
+      nav.appendChild(input);
+      nav.appendChild(total);
+      nav.appendChild(btn);
+      this.scrollEl.appendChild(nav);
+
+      this._pageNav = nav;
+      this._pageInput = input;
+      this._pageBtn = btn;
+      this._curPageEl = cur;
+      this._totalPageEl = total;
+      // 初始化指示（若默认在非首页，则与滚动保持一致）
+      this._updatePageIndicator();
+    }
+
+    // 读输入框并跳转：非法数值忽略，越界自动收敛到边界
+    _pageJump() {
+      if (!this._pageInput || !this.pages.length) return;
+      const n = parseInt(this._pageInput.value, 10);
+      const numPages = this.pages.length;
+      if (isNaN(n)) return;                     // 非法输入直接忽略
+      if (n < 1) return this._goToPageNumber(1); // 收敛到首页
+      if (n > numPages) return this._goToPageNumber(numPages); // 收敛到末页
+      this._goToPageNumber(n);
+    }
+
+    // 按 1-based 页码跳转，并回显页码 / 更新指示
+    _goToPageNumber(pageNum) {
+      if (!Number.isInteger(pageNum) || pageNum < 1 || pageNum > this.pages.length) return;
+      this._goToOutlinePage(pageNum - 1); // 1-based 页码 → 0-based 下标
+      if (this._pageInput) this._pageInput.value = String(pageNum);
+      if (this._curPageEl) this._curPageEl.textContent = `第 ${pageNum} 页`;
+    }
+
+    // 以滚动容器顶部可视的上缘所在页为准，返回当前页（1-based）
+    _currentVisiblePage() {
+      if (!this.scrollEl || !this.pages.length) return 1;
+      const top = this.scrollEl.scrollTop;
+      for (let i = 0; i < this.pages.length; i++) {
+        const info = this.pages[i];
+        if (!info || !info.wrap) continue;
+        if (info.wrap.offsetTop > top + 10) return info.index; // 该页上缘已滚入视口顶部 → 当前页
+      }
+      return this.pages.length;
+    }
+
+    // 更新“当前第 X 页”指示
+    _updatePageIndicator() {
+      if (!this._curPageEl) return;
+      this._curPageEl.textContent = `第 ${this._currentVisiblePage()} 页`;
+    }
+
     // 幂等注入侧边栏样式（仅一次）
     _injectOutlineStyle() {
       if (document.getElementById('pdfjs-outline-style')) return;
@@ -344,12 +522,35 @@
         'max-height:70%;overflow:auto;padding:6px;font-size:13px;line-height:1.4;color:inherit;',
         'background:rgba(250,250,250,.92);border:1px solid rgba(128,128,128,.35);border-radius:8px;',
         'box-shadow:0 4px 16px rgba(0,0,0,.25);}',
+        '.pdfjs-outline{padding-right:16px;}/* 右侧预留拖拽手柄区域 */',
+        '.pdfjs-outline-resizer{position:absolute;top:0;right:0;bottom:0;width:6px;cursor:ew-resize;',
+        'z-index:60;background:rgba(128,128,128,.15);border-left:1px solid rgba(128,128,128,.3);}',
+        '.pdfjs-outline-resizer:hover{background:rgba(128,128,128,.32);}',
+        '.pdfjs-outline-resizer::after{content:\'\';position:absolute;top:50%;left:50%;',
+        'transform:translate(-50%,-50%);width:2px;height:24px;background:currentColor;opacity:.3;',
+        'border-radius:2px;}',
         '[data-theme="dark"] .pdfjs-outline{background:rgba(24,24,24,.86);color:#eee;}',
         '.pdfjs-outline .pdfjs-outline-empty{padding:8px;opacity:.7;}',
         '.pdfjs-outline-item{display:block;width:100%;text-align:left;padding:3px 6px;margin:1px 0;',
         'border:none;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:4px;',
         'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
-        '.pdfjs-outline-item:hover{background:rgba(128,128,128,.22);}'
+        '.pdfjs-outline-item:hover{background:rgba(128,128,128,.22);}',
+        '.pdfjs-outline-children{display:none;}/* 默认收起：由 JS 切换为 block 以展开 */',
+        '.pdfjs-outline-marker{display:inline-block;width:1em;margin-right:4px;text-align:center;',
+        'color:inherit;transform:rotate(0deg);transition:transform .12s ease;}',
+        '.pdfjs-outline-item--has-children:hover{cursor:pointer;}',
+        '.pdfjs-outline-item--open .pdfjs-outline-marker{transform:rotate(90deg)}',
+        '.pdfjs-page-nav{position:fixed;right:12px;bottom:12px;z-index:50;display:flex;align-items:center;',
+        'gap:6px;padding:6px 10px;font-size:13px;line-height:1.4;color:inherit;',
+        'background:rgba(128,128,128,.18);border:1px solid rgba(128,128,128,.35);border-radius:8px;}',
+        '.pdfjs-page-nav-cur{white-space:nowrap;}',
+        '.pdfjs-page-nav-total{opacity:.85;white-space:nowrap;}',
+        '.pdfjs-page-nav-input{width:52px;padding:2px 4px;font:inherit;font-size:13px;color:inherit;',
+        'background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.4);border-radius:4px;}',
+        '.pdfjs-page-nav-btn{padding:2px 8px;font:inherit;font-size:13px;color:inherit;cursor:pointer;',
+        'background:rgba(128,128,128,.2);border:1px solid rgba(128,128,128,.4);border-radius:5px;}',
+        '.pdfjs-page-nav-btn:hover{background:rgba(128,128,128,.35);}',
+        '[data-theme="dark"] .pdfjs-page-nav{color:#eee;}'
       ].join('');
       (document.head || document.documentElement).appendChild(style);
     }
@@ -567,9 +768,21 @@
       this._findChain = null;
       this._searchState = { text: '', matches: [], current: 0 };
       // 清理书签大纲（toggle/panel 作为 scrollEl 子节点随其一并移除）
+      if (this._outlineResizeMove) document.removeEventListener('pointermove', this._outlineResizeMove);
+      if (this._outlineResizeUp) document.removeEventListener('pointerup', this._outlineResizeUp);
+      document.body.style.userSelect = '';
+      this._outlineResizeMove = null;
+      this._outlineResizeUp = null;
+      this._outlineResizer = null;
       this._outlineToggle = null;
       this._outlinePanel = null;
       this._outline = null;
+      // 页码跳转条作为 scrollEl 子节点已随 scrollEl 一并移除，仅需清引用
+      this._pageNav = null;
+      this._pageInput = null;
+      this._pageBtn = null;
+      this._curPageEl = null;
+      this._totalPageEl = null;
     }
 
     // 主题切换时刷新页面边界阴影/背景（内容不变，仅容器外观由 CSS 控制）
