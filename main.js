@@ -314,18 +314,41 @@ async function importFile(filePath, categoryId) {
     fs.copyFileSync(filePath, path.join(getNotesDir(), originalFile));
   }
 
+  // ===== 大文件保护：超大文件不再一次性读入内存，避免程序因 OOM 崩溃 =====
+  // 仅保留原始文件为附件，正文放置占位提示。20MB 以上视为超大。
+  const MAX_TEXT = 20 * 1024 * 1024;
+  let readText;
+  try {
+    const sizeBig = fs.statSync(filePath).size;
+    if (sizeBig > MAX_TEXT) {
+      const importedDir = path.join(getAttachmentsDir(), 'imported');
+      if (!fs.existsSync(importedDir)) fs.mkdirSync(importedDir, { recursive: true });
+      const destName = path.basename(filePath);
+      originalFile = path.join('attachments', 'imported', destName);
+      try { fs.copyFileSync(filePath, path.join(getNotesDir(), originalFile)); } catch (e) { /* 忽略 */ }
+      const gbSize = (sizeBig / (1024 * 1024 * 1024)).toFixed(2);
+      content = `*[文件过大 (${gbSize}GB) - 为避免程序崩溃，未全文载入内容]*\n\n原始文件已保留在附件，可点击预览。`;
+      // 超限时读取函数返回占位，避免整读大文件
+      readText = () => content;
+    } else {
+      readText = () => fs.readFileSync(filePath, 'utf-8');
+    }
+  } catch (e) {
+    readText = () => fs.readFileSync(filePath, 'utf-8');
+  }
+
   try {
     switch (ext) {
       case '.txt':
       case '.rtf':
-        content = fs.readFileSync(filePath, 'utf-8');
+        content = readText();
         break;
       case '.html':
       case '.htm':
-        content = convertHtml(fs.readFileSync(filePath, 'utf-8'));
+        content = convertHtml(readText());
         break;
       case '.md':
-        content = fs.readFileSync(filePath, 'utf-8');
+        content = readText();
         break;
       case '.doc':
       case '.docx':
@@ -350,7 +373,7 @@ async function importFile(filePath, categoryId) {
         if (archiveExts.includes(ext)) {
           content = `*[压缩包文件 - 不支持预览]*\n\n> 原始文件: ${baseName}${ext}`;
         } else {
-          content = fs.readFileSync(filePath, 'utf-8');
+          content = readText();
         }
     }
   } catch (e) {
