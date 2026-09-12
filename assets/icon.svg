@@ -1,25 +1,69 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#005fb8;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0078d4;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#2bb673;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0b6b3f;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gz" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#5ce0a4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2fbe7c;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gl" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3fca8c;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1f9e63;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
-  <!-- 笔记图标 -->
-  <g transform="translate(128,128)">
-    <rect x="-48" y="-60" width="96" height="120" rx="12" fill="white" opacity="0.95"/>
-    <rect x="-36" y="-42" width="72" height="6" rx="3" fill="#005fb8" opacity="0.8"/>
-    <rect x="-36" y="-28" width="56" height="6" rx="3" fill="#005fb8" opacity="0.5"/>
-    <rect x="-36" y="-14" width="64" height="6" rx="3" fill="#005fb8" opacity="0.5"/>
-    <rect x="-36" y="0" width="48" height="6" rx="3" fill="#005fb8" opacity="0.3"/>
-    <rect x="-36" y="14" width="60" height="6" rx="3" fill="#005fb8" opacity="0.3"/>
-    <rect x="-36" y="28" width="40" height="6" rx="3" fill="#005fb8" opacity="0.2"/>
+
+  <rect width="256" height="256" rx="52" fill="url(#bg)"/>
+
+  <!-- 右侧竹叶（后层） -->
+  <g transform="translate(150,86)">
+    <path d="M0 0 Q 30 -10 42 -38 Q 16 -32 0 0" fill="#6fe6b0" opacity="0.95"/>
   </g>
-  <!-- 笔 -->
-  <g transform="translate(148,96) rotate(45)">
-    <rect x="-4" y="-24" width="8" height="48" rx="4" fill="#ffb900"/>
-    <polygon points="-4,24 4,24 10,36 -4,36" fill="#ffb900"/>
-    <polygon points="-4,24 4,24 4,28 -4,28" fill="#fff" opacity="0.5"/>
+  <g transform="translate(150,96) rotate(18)">
+    <path d="M0 0 Q 26 -6 34 -30 Q 12 -26 0 0" fill="#79e9b6" opacity="0.9"/>
+  </g>
+  <g transform="translate(132,104) rotate(-14)">
+    <path d="M0 0 Q 24 -5 30 -27 Q 10 -23 0 0" fill="#6fe6b0" opacity="0.9"/>
+  </g>
+
+  <!-- 中央主竹竿（带竹节） -->
+  <g transform="translate(128,158)">
+    <rect x="-20" y="-150" width="40" height="150" rx="18" fill="url(#gz)"/>
+    <rect x="-20" y="-118" width="40" height="7" rx="3" fill="#1e9259"/>
+    <rect x="-20" y="-82"  width="40" height="7" rx="3" fill="#1e9259"/>
+    <rect x="-20" y="-46"  width="40" height="7" rx="3" fill="#1e9259"/>
+    <rect x="-20" y="-12"  width="40" height="7" rx="3" fill="#1e9259"/>
+    <!-- 竹竿受光高光 -->
+    <rect x="-10" y="-150" width="8" height="150" rx="4" fill="#ffffff" opacity="0.28"/>
+  </g>
+
+  <!-- 左侧细竹竿 -->
+  <g transform="translate(88,142)">
+    <rect x="-13" y="-132" width="26" height="132" rx="11" fill="url(#gl)"/>
+    <rect x="-13" y="-100" width="26" height="6" rx="3" fill="#168553"/>
+    <rect x="-13" y="-64"  width="26" height="6" rx="3" fill="#168553"/>
+    <rect x="-13" y="-28"  width="26" height="6" rx="3" fill="#168553"/>
+    <rect x="-6" y="-132" width="6" height="132" rx="3" fill="#ffffff" opacity="0.3"/>
+  </g>
+
+  <!-- 右侧细竹竿 -->
+  <g transform="translate(172,148)">
+    <rect x="-12" y="-138" width="24" height="138" rx="11" fill="url(#gl)"/>
+    <rect x="-12" y="-106" width="24" height="6" rx="3" fill="#168553"/>
+    <rect x="-12" y="-70"  width="24" height="6" rx="3" fill="#168553"/>
+    <rect x="-12" y="-34"  width="24" height="6" rx="3" fill="#168553"/>
+    <rect x="-5" y="-138" width="6" height="138" rx="3" fill="#ffffff" opacity="0.3"/>
+  </g>
+
+  <!-- 左侧竹叶（前层） -->
+  <g transform="translate(96,64)">
+    <path d="M0 0 Q -30 -8 -44 -34 Q -18 -30 0 0" fill="#a0f2c9" opacity="0.95"/>
+  </g>
+  <g transform="translate(100,50) rotate(-24)">
+    <path d="M0 0 Q -26 -8 -38 -32 Q -14 -28 0 0" fill="#aef5d1" opacity="0.9"/>
+  </g>
+  <g transform="translate(116,72) rotate(10)">
+    <path d="M0 0 Q -24 -6 -32 -28 Q -11 -24 0 0" fill="#a0f2c9" opacity="0.9"/>
   </g>
 </svg>
