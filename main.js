@@ -296,11 +296,30 @@ function convertExcel(filePath) {
   } catch (e) { return `*[Excel 转换失败: ${e.message}]*`; }
 }
 
+// 一次性补齐既有导入笔记标题缺失的扩展名（基于其 originalFile）
+function backfillTitleExtensions() {
+  try {
+    const meta = loadNotesMeta();
+    let changed = false;
+    for (const n of meta.notes) {
+      if (n.originalFile && n.title && !n.isDeleted) {
+        const ext = path.extname(n.originalFile).toLowerCase();
+        // 标题若未以原文件扩展名结尾则补齐（避免标题中的句点被误判为已有扩展名）
+        if (ext && !n.title.toLowerCase().endsWith(ext)) {
+          n.title = n.title + ext;
+          changed = true;
+        }
+      }
+    }
+    if (changed) saveNotesMeta(meta);
+  } catch (e) { /* 忽略迁移错误 */ }
+}
+
 async function importFile(filePath, categoryId) {
   const ext = path.extname(filePath).toLowerCase();
   const baseName = path.basename(filePath, ext);
   let content = '';
-  let title = baseName;
+  let title = path.basename(filePath); // 标题保留完整文件名（含扩展名）
   let originalFile = null;
 
   // 二进制文件（非纯文本）保存原文件
@@ -1167,11 +1186,25 @@ function setupIPC() {
   });
 }
 
+// ============ 单实例锁：避免多个实例争用同一 userData/缓存目录（导致缓存 0x5 错误） ============
+{
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      const w = BrowserWindow.getAllWindows()[0];
+      if (w) { if (w.isMinimized()) w.restore(); w.show(); w.focus(); }
+    });
+  }
+}
+
 // ============ 应用生命周期 ============
 app.whenReady().then(() => {
   initDirectories();
   initPasswdDir();
   setupIPC();
+  backfillTitleExtensions(); // 补齐既有导入笔记标题缺失的扩展名
   createWindow();
   createTray();
   registerShortcuts();

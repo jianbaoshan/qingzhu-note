@@ -430,7 +430,7 @@ const App = window.App = {
       card.innerHTML = `
         <input type="checkbox" class="note-card__checkbox" data-batch-id="${note.id}" ${isChecked ? 'checked' : ''}>
         <div class="note-card__header">
-          <h3 class="note-card__title">${this.escapeHtml(note.title)}</h3>
+          <h3 class="note-card__title" title="${this.escapeHtml(this._displayTitle(note))}">${this.escapeHtml(this._displayTitle(note))}</h3>
           <span class="note-card__favorite${note.isFavorite ? ' note-card__favorite--active' : ''}" data-action="favorite" aria-label="收藏">
             <svg width="14" height="14" viewBox="0 0 16 16">
               <path d="M8 1.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.75l-3.52 1.85.67-3.93L2.3 5.64l3.94-.57L8 1.5z" fill="${note.isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
@@ -2187,6 +2187,14 @@ const App = window.App = {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  },
+
+  // 返回展示用标题：无原始文件的 Markdown 笔记后缀 .md，导入文件保留其真实扩展名
+  _displayTitle(note) {
+    if (!note.originalFile && note.title && !note.title.toLowerCase().endsWith('.md')) {
+      return note.title + '.md';
+    }
+    return note.title;
   },
 
   // ============ 自定义输入弹窗（替代 prompt） ============
