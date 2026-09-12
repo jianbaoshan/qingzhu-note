@@ -13,7 +13,35 @@
   <!-- 顶部自绘标题栏 -->
   <header class="titlebar" id="titlebar">
     <div class="titlebar__drag" id="drag-region">
-      <span class="titlebar__icon">&#x1F4DD;</span>
+      <span class="titlebar__icon" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;">
+        <svg width="15" height="15" viewBox="0 0 256 256" style="display:block" aria-hidden="true">
+          <defs>
+            <linearGradient id="tb-bg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#2bb673"/>
+              <stop offset="1" stop-color="#0b6b3f"/>
+            </linearGradient>
+          </defs>
+          <rect width="256" height="256" rx="60" fill="url(#tb-bg)"/>
+          <g transform="translate(128,150)">
+            <rect x="-20" y="-148" width="40" height="148" rx="18" fill="#5ce0a4"/>
+            <rect x="-20" y="-112" width="40" height="7" rx="3" fill="#1e9259"/>
+            <rect x="-20" y="-76" width="40" height="7" rx="3" fill="#1e9259"/>
+            <rect x="-20" y="-40" width="40" height="7" rx="3" fill="#1e9259"/>
+          </g>
+          <g transform="translate(92,140)">
+            <rect x="-12" y="-128" width="24" height="128" rx="11" fill="#3fca8c"/>
+            <rect x="-12" y="-96" width="24" height="6" rx="3" fill="#168553"/>
+            <rect x="-12" y="-60" width="24" height="6" rx="3" fill="#168553"/>
+          </g>
+          <g transform="translate(166,144)">
+            <rect x="-11" y="-120" width="22" height="120" rx="11" fill="#3fca8c"/>
+            <rect x="-11" y="-88" width="22" height="6" rx="3" fill="#168553"/>
+            <rect x="-11" y="-52" width="22" height="6" rx="3" fill="#168553"/>
+          </g>
+          <path d="M150 84 Q 178 74 192 44 Q 164 48 150 84" fill="#6fe6b0"/>
+          <path d="M96 66 Q 68 58 54 32 Q 82 34 96 66" fill="#a0f2c9"/>
+        </svg>
+      </span>
       <span class="titlebar__title">青竹笔记</span>
     </div>
     <div class="titlebar__controls">
