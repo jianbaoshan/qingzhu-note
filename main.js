@@ -403,11 +403,13 @@ async function importFile(filePath, categoryId, titleOverride) {
   // 检查是否已有同名导入文件，有则更新现有笔记，无则创建新笔记
   if (originalFile) {
     const meta = loadNotesMeta();
-    const existing = meta.notes.find(n => n.originalFile === originalFile && !n.isDeleted);
+    const existing = meta.notes.find(n => (n.originalFile === originalFile || n.originalFile === originalFile.replace(/\\/g, '/')) && !n.isDeleted);
     if (existing) {
       const noteFile = path.join(getNotesDir(), `${existing.id}.md`);
       fs.writeFileSync(noteFile, content, 'utf-8');
       existing.updatedAt = new Date().toISOString();
+      // 重新导入到其他分类时，将已有笔记移动/关联到本次导入的分类，避免“导入成功但在目标文件夹看不到”
+      existing.categoryId = categoryId || existing.categoryId;
       saveNotesMeta(meta);
       return existing;
     }
