@@ -315,11 +315,12 @@ function backfillTitleExtensions() {
   } catch (e) { /* 忽略迁移错误 */ }
 }
 
-async function importFile(filePath, categoryId) {
+async function importFile(filePath, categoryId, titleOverride) {
   const ext = path.extname(filePath).toLowerCase();
   const baseName = path.basename(filePath, ext);
   let content = '';
-  let title = path.basename(filePath); // 标题保留完整文件名（含扩展名）
+  // 标题默认保留完整文件名（含扩展名）；导入文件夹时用 titleOverride 覆盖为含层级的相对路径
+  let title = titleOverride || path.basename(filePath);
   let originalFile = null;
 
   // 二进制文件（非纯文本）保存原文件
@@ -416,16 +417,20 @@ async function importFile(filePath, categoryId) {
 }
 
 // ============ 批量导入 ============
-async function batchImport(filePaths, categoryId, progressCallback) {
+async function batchImport(fileItems, categoryId, progressCallback) {
   const results = [];
-  for (let i = 0; i < filePaths.length; i++) {
+  for (let i = 0; i < fileItems.length; i++) {
+    const item = fileItems[i];
+    // 兼容：既支持纯字符串路径，也支持 { path, relPath } 对象（文件夹层级导入）
+    const filePath = (typeof item === 'string') ? item : item.path;
+    const relPath = (typeof item === 'string') ? null : item.relPath;
     try {
-      const note = await importFile(filePaths[i], categoryId);
-      results.push({ file: filePaths[i], success: true, noteId: note.id, title: note.title });
+      const note = await importFile(filePath, categoryId, relPath);
+      results.push({ file: filePath, success: true, noteId: note.id, title: note.title });
     } catch (e) {
-      results.push({ file: filePaths[i], success: false, error: e.message });
+      results.push({ file: filePath, success: false, error: e.message });
     }
-    if (progressCallback) progressCallback(i + 1, filePaths.length);
+    if (progressCallback) progressCallback(i + 1, fileItems.length);
   }
   return results;
 }
@@ -1039,7 +1044,7 @@ function setupIPC() {
     return false;
   });
 
-  // 文件导入对话框
+  // 文件导入对话框（仅选择文件；文件夹整体导入走 open-folder-dialog + prepare-import-targets）
   ipcMain.handle('open-file-dialog', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
@@ -1065,19 +1070,46 @@ function setupIPC() {
     return result;
   });
 
-  ipcMain.handle('scan-folder-files', (e, folderPath) => {
-    const supportedExts = ['.txt', '.rtf', '.html', '.htm', '.md', '.doc', '.docx', '.pdf', '.xlsx', '.xls', '.csv', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
-    const files = [];
-    try {
-      const items = fs.readdirSync(folderPath);
-      for (const item of items) {
-        const fullPath = path.join(folderPath, item);
-        if (fs.statSync(fullPath).isFile() && supportedExts.includes(path.extname(item).toLowerCase())) {
-          files.push(fullPath);
+  // 支持的导入扩展名（文件夹扫描时使用）
+  const supportedImportExts = ['.txt', '.rtf', '.html', '.htm', '.md', '.doc', '.docx', '.pdf', '.xlsx', '.xls', '.csv', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
+
+  // 递归扫描文件夹，返回一幕平铺的 { path, relPath }，relPath = 根文件夹名称/子文件/文件.ext，保留层级
+  function scanFolderRecursive(rootPath, supportedExts) {
+    const items = [];
+    const rootName = path.basename(rootPath);
+    const walk = (dirAbs, rel) => {
+      let entries;
+      try {
+        entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+      } catch (e) { return; }
+      for (const entry of entries) {
+        const abs = path.join(dirAbs, entry.name);
+        if (entry.isDirectory()) {
+          walk(abs, rel ? `${rel}/${entry.name}` : entry.name);
+        } else if (entry.isFile() && supportedExts.includes(entry.name && path.extname(entry.name).toLowerCase())) {
+          const relPath = rootName + (rel ? `/${rel}/${entry.name}` : `/${entry.name}`);
+          items.push({ path: abs, relPath });
         }
       }
-    } catch (e) { /* ignore */ }
-    return files;
+    };
+    walk(rootPath, '');
+    return items;
+  }
+
+  // 将选择的路径（单个文件 / 多个文件 / 文件夹）展开为统一的导入目标列表（递归扫描文件夹）
+  ipcMain.handle('prepare-import-targets', (e, paths) => {
+    const items = [];
+    for (const p of (paths || [])) {
+      try {
+        const st = fs.statSync(p);
+        if (st.isDirectory()) {
+          items.push(...scanFolderRecursive(p, supportedImportExts));
+        } else if (st.isFile()) {
+          items.push({ path: p, relPath: path.basename(p) });
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return items;
   });
 
   ipcMain.handle('batch-import', async (e, { filePaths, categoryId }) => {
@@ -1085,6 +1117,59 @@ function setupIPC() {
       mainWindow?.webContents.send('import-progress', { current, total });
     });
     return results;
+  });
+
+  // 导入整个文件夹：先按文件夹名创建分类（含子文件夹逐层建子分类），再把文件导入到对应分类
+  ipcMain.handle('import-folder', async (e, { folderPath, parentCategoryId }) => {
+    const meta = loadNotesMeta();
+    const rootName = path.basename(folderPath);
+    const files = []; // { path, categoryId } 待导入文件列表
+    const createdCategories = [];
+
+    // 1. 创建根分类（导入的文件夹本身）
+    const rootCat = { id: generateId(), name: rootName, icon: '📁', order: meta.categories.length, parentId: parentCategoryId || null };
+    meta.categories.push(rootCat);
+    createdCategories.push(rootCat);
+
+    // 2. 递归扫描，为每个子文件夹创建子分类，并收集文件到对应分类
+    const catMap = { '': rootCat.id }; // 相对子路径 -> 分类 id
+    try {
+      const walk = (dirAbs, rel, parentCatId) => {
+        let entries;
+        try { entries = fs.readdirSync(dirAbs, { withFileTypes: true }); } catch (e) { return; }
+        for (const entry of entries) {
+          const abs = path.join(dirAbs, entry.name);
+          if (entry.isDirectory()) {
+            const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+            const childCat = { id: generateId(), name: entry.name, icon: '📁', order: meta.categories.length, parentId: parentCatId };
+            meta.categories.push(childCat);
+            createdCategories.push(childCat);
+            catMap[childRel] = childCat.id;
+            walk(abs, childRel, childCat.id);
+          } else if (entry.isFile() && supportedImportExts.includes(path.extname(entry.name).toLowerCase())) {
+            files.push({ path: abs, categoryId: catMap[rel || ''] });
+          }
+        }
+      };
+      walk(folderPath, '', rootCat.id);
+    } catch (e) { /* ignore */ }
+
+    saveNotesMeta(meta);
+
+    // 3. 逐文件导入到对应分类（发送初始化进度）
+    mainWindow?.webContents.send('import-progress', { current: 0, total: files.length });
+    const results = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      try {
+        const note = await importFile(f.path, f.categoryId);
+        results.push({ file: f.path, success: true, noteId: note.id, title: note.title });
+      } catch (err) {
+        results.push({ file: f.path, success: false, error: err.message });
+      }
+      mainWindow?.webContents.send('import-progress', { current: i + 1, total: files.length });
+    }
+    return { results, createdCategories: createdCategories.map(c => c.id) };
   });
 
   // 导出笔记

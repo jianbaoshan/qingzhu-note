@@ -1003,13 +1003,65 @@ const App = window.App = {
     const result = await window.electronAPI.openFileDialog();
     if (result.canceled || !result.filePaths.length) return;
 
+    // 将所选路径（单个文件 / 多个文件）展开为统一导入目标列表
+    const items = await window.electronAPI.prepareImportTargets(result.filePaths);
+
+    await this.performImport(items);
+  },
+
+  // 导入整个文件夹：先创建「文件夹名」分类（含子文件夹逐层建子分类），再把文件导入到对应分类
+  async openImportFolderDialog() {
+    if (!window.electronAPI) {
+      alert('导入功能需要启动 Electron 环境');
+      return;
+    }
+    const result = await window.electronAPI.openFolderDialog();
+    if (result.canceled || !result.filePaths.length) return;
+
+    const folderPath = result.filePaths[0];
+
+    // 在「当前分类」下新建文件夹；若处于特殊视图则建在 default 下
+    const parentCategoryId = this.state.currentCategory === 'all' || this.state.currentCategory === 'favorites' || this.state.currentCategory === 'recent' || this.state.currentCategory === 'trash' ? 'default' : this.state.currentCategory;
+
+    // 显示导入进度（总数为扫描后由主进程回传）
+    this.showImportProgress(null);
+
+    const importResponse = await window.electronAPI.importFolder({ folderPath, parentCategoryId });
+
+    this.hideImportProgress();
+
+    // 刷新笔记列表与侧边栏（含新建的分类）
+    await this.loadNotes();
+    this.renderNoteList();
+    this.renderSidebar();
+
+    // 显示导入结果
+    const results = (importResponse && importResponse.results) || [];
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    if (failCount > 0) {
+      this.showToast(`导入完成：${successCount} 成功，${failCount} 失败`, 'warning');
+    } else if (results.length > 0) {
+      this.showToast(`成功导入 ${successCount} 个文件`, 'success');
+    } else {
+      this.showToast('该文件夹中没有可导入的文件（已创建文件夹）', 'success');
+    }
+  },
+
+  // 共享的批量导入执行
+  async performImport(items) {
+    if (!window.electronAPI || !items || !items.length) {
+      this.showToast('所选内容中没有可导入的文件', 'warning');
+      return;
+    }
+
     const categoryId = this.state.currentCategory === 'all' || this.state.currentCategory === 'favorites' || this.state.currentCategory === 'recent' || this.state.currentCategory === 'trash' ? 'default' : this.state.currentCategory;
 
     // 显示导入进度
-    this.showImportProgress(result.filePaths);
+    this.showImportProgress(items);
 
     const importResults = await window.electronAPI.batchImport({
-      filePaths: result.filePaths,
+      filePaths: items,
       categoryId: categoryId
     });
 
@@ -1035,16 +1087,20 @@ const App = window.App = {
     const old = document.getElementById('import-progress');
     if (old) old.remove();
 
+    // files 传入 null（文件夹导入时总数为未知，由主进程扫描后回传）
+    const knownTotal = files && typeof files.length === 'number';
+    const total = knownTotal ? files.length : null;
+
     const div = document.createElement('div');
     div.id = 'import-progress';
     div.className = 'import-progress';
     div.innerHTML = `
       <div class="import-progress__content">
-        <div class="import-progress__title">正在导入 ${files.length} 个文件...</div>
+        <div class="import-progress__title">${total != null ? `正在导入 ${total} 个文件...` : '正在导入，请稍候...'}</div>
         <div class="import-progress__bar">
           <div class="import-progress__fill" id="import-progress-fill"></div>
         </div>
-        <div class="import-progress__text" id="import-progress-text">0 / ${files.length}</div>
+        <div class="import-progress__text" id="import-progress-text">${total != null ? `0 / ${total}` : '扫描中...'}</div>
       </div>
     `;
     document.body.appendChild(div);
@@ -1054,7 +1110,7 @@ const App = window.App = {
       window.electronAPI.onImportProgress((data) => {
         const fill = document.getElementById('import-progress-fill');
         const text = document.getElementById('import-progress-text');
-        if (fill) fill.style.width = `${(data.current / data.total) * 100}%`;
+        if (fill) fill.style.width = `${data.total > 0 ? (data.current / data.total) * 100 : 0}%`;
         if (text) text.textContent = `${data.current} / ${data.total}`;
       });
     }
@@ -1320,6 +1376,13 @@ const App = window.App = {
         if (id === 'btn-import') {
           e.preventDefault();
           this.openImportDialog();
+          return;
+        }
+
+        // 导入文件夹（整体导入，含子文件夹，保留层级）
+        if (id === 'btn-import-folder') {
+          e.preventDefault();
+          this.openImportFolderDialog();
           return;
         }
 
@@ -2191,7 +2254,7 @@ const App = window.App = {
 
   // 返回展示用标题：无原始文件的 Markdown 笔记后缀 .md，导入文件保留其真实扩展名
   _displayTitle(note) {
-    if (!note.originalFile && note.title && !note.title.toLowerCase().endsWith('.md')) {
+    if (!note.originalFile && note.title && !/\.(md|[A-Za-z0-9]{1,6})$/i.test(note.title.trim())) {
       return note.title + '.md';
     }
     return note.title;

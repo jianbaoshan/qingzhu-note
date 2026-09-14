@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 文件导入
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
+  prepareImportTargets: (paths) => ipcRenderer.invoke('prepare-import-targets', paths),
+  importFolder: (data) => ipcRenderer.invoke('import-folder', data),
   scanFolderFiles: (folderPath) => ipcRenderer.invoke('scan-folder-files', folderPath),
   batchImport: (data) => ipcRenderer.invoke('batch-import', data),
   onImportProgress: (callback) => ipcRenderer.on('import-progress', (e, data) => callback(data)),
