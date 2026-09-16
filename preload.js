@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getNotes: () => ipcRenderer.invoke('get-notes'),
   createNote: (data) => ipcRenderer.invoke('create-note', data),
   getNoteContent: (id) => ipcRenderer.invoke('get-note-content', id),
+  getNoteContentPreview: (id, maxBytes) => ipcRenderer.invoke('get-note-content-preview', id, maxBytes),
+  getNoteChunk: (id, offset, length) => ipcRenderer.invoke('get-note-chunk', id, offset, length),
   updateNoteContent: (data) => ipcRenderer.invoke('update-note-content', data),
   deleteNote: (data) => ipcRenderer.invoke('delete-note', data),
   restoreNote: (id) => ipcRenderer.invoke('restore-note', id),

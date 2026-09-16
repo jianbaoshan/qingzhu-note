@@ -1644,6 +1644,7 @@ body {
   opacity: 0.2;
   line-height: 1;
   color: transparent;
+  user-select: text;
 }
 .pdfjs-text-layer span {
   position: absolute;

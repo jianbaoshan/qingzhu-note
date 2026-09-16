@@ -7,6 +7,7 @@ const { marked } = require('marked');
 const mammoth = require('mammoth');
 const pdfParse = require('pdf-parse');
 const xlsx = require('xlsx');
+const JSZip = require('jszip');
 
 // ============ 全局状态 ============
 let mainWindow = null;
@@ -324,7 +325,7 @@ async function importFile(filePath, categoryId, titleOverride) {
   let originalFile = null;
 
   // 二进制文件（非纯文本）保存原文件
-  const binaryExts = ['.pdf', '.doc', '.docx', '.xlsx', '.xls', '.csv', '.html', '.htm', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
+  const binaryExts = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xlsx', '.xls', '.csv', '.html', '.htm', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
   const archiveExts = ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.zst'];
   if (binaryExts.includes(ext) || archiveExts.includes(ext)) {
     const importedDir = path.join(getAttachmentsDir(), 'imported');
@@ -376,6 +377,10 @@ async function importFile(filePath, categoryId, titleOverride) {
         break;
       case '.pdf':
         content = `*[PDF 文档 - 支持应用内预览]*\n\n> 原始文件: ${baseName}${ext}`;
+        break;
+      case '.ppt':
+      case '.pptx':
+        content = `*[PPT 演示文稿 - 支持应用内预览]*\n\n> 原始文件: ${baseName}${ext}`;
         break;
       case '.xlsx':
       case '.xls':
@@ -550,6 +555,145 @@ async function convertXlsxToPdf(xlsxPath) {
         resolve(pdfPath);
       } else {
         reject(new Error('Excel 转换失败: ' + stdout.trim()));
+      }
+    });
+  });
+}
+
+// ============ PPT (.pptx) 直接解析：解包 zip，提取每页文本与图片 ============
+// 说明：.pptx 本质是 OOXML 压缩包，不依赖 PowerPoint/Office，也不转 PDF。
+async function listPptSlides(zip, presentation) {
+  // 读取 presentation.xml 的 <p:sldIdLst> 顺序，结合 rels 得到各页 slide 路径（按实际放映顺序）
+  const sld = presentation.match(/<p:sldIdLst>([\s\S]*?)<\/p:sldIdLst>/);
+  const rels = (zip.file('ppt/_rels/presentation.xml.rels') && await zip.file('ppt/_rels/presentation.xml.rels').async('string')) || '';
+  const relMap = {};
+  for (const m of rels.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/>/g) || []) {
+    if (m[1] && m[2] && /slide/i.test(m[2])) relMap[m[1]] = m[2].replace(/^\/?/, 'ppt/');
+  }
+  const slides = [];
+  if (sld) {
+    for (const m of sld[1].matchAll(/r:id="([^"]+)"/g)) {
+      const target = relMap[m[1]];
+      if (target) slides.push(target);
+    }
+  }
+  if (slides.length === 0) {
+    // 兜底：按文件名排序
+    for (const f of Object.keys(zip.files)) {
+      const fm = f.match(/^ppt\/slides\/slide(\d+)\.xml$/i);
+      if (fm) slides.push(f);
+    }
+    slides.sort((a, b) => parseInt(a.match(/slide(\d+)/)[1], 10) - parseInt(b.match(/slide(\d+)/)[1], 10));
+  }
+  return slides;
+}
+
+function extractRelsMap(zip, slideName) {
+  const relPath = slideName.replace(/\.xml$/, '.xml.rels').replace(/^ppt\/slides\//, 'ppt/slides/_rels/');
+  const rel = zip.file(relPath);
+  if (!rel) return {};
+  // 该项不能阻塞整体解析，改为同步读取缓存？jszip 需异步，这里返回 Promise
+  return rel.async('string').then(xml => {
+    const map = {};
+    for (const m of xml.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/>/g) || []) {
+      if (m[1]) map[m[1]] = m[2];
+    }
+    return map;
+  });
+}
+
+async function parsePptx(filePath) {
+  const data = fs.readFileSync(filePath);
+  const zip = await JSZip.loadAsync(data);
+  const presentation = await zip.file('ppt/presentation.xml').async('string');
+  const slidePaths = await listPptSlides(zip, presentation);
+  const result = [];
+  for (const slidePath of slidePaths) {
+    const file = zip.file(slidePath);
+    if (!file) continue;
+    const xml = await file.async('string');
+    // 文本：<a:t> 内容，按 <a:p> 分段
+    const paras = [];
+    for (const p of xml.split('</a:p>')) {
+      const texts = [];
+      for (const t of p.matchAll(/<a:t(?: [^>]*?)?>([\s\S]*?)<\/a:t>/g) || []) {
+        texts.push(t[1]);
+      }
+      let line = texts.join('').replace(/\u00a0/g, ' ').replace(/[\u2018\u2019]/g, "'").trim();
+      // 过滤纯分隔/页码等装饰性杂行
+      if (line && !/^[\s\d\-_]+$/.test(line)) paras.push(line);
+    }
+    // 图片：找到 <p:pic> 中 blip r:embed，经 rels 映射到 media，解码为 dataURL
+    const relMap = await extractRelsMap(zip, slidePath);
+    const images = [];
+    for (const m of xml.matchAll(/<a:blip\b[^>]*?r:embed="([^"]+)"/g) || []) {
+      const target = relMap[m[1]];
+      if (!target) continue;
+      const mediaRel = target.replace(/^\.\.\//, ''); // 相对 rId 所在 _rels 而言
+      const mediaPath = 'ppt/' + mediaRel.replace(/^ppt\//, '');
+      const media = zip.file(mediaPath);
+      if (!media) continue;
+      const buf = await media.async('nodebuffer');
+      const ext = path.extname(mediaPath).toLowerCase();
+      const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif' }[ext] || 'image/png';
+      images.push('data:' + mime + ';base64,' + buf.toString('base64'));
+    }
+    result.push({ index: result.length + 1, paras, images });
+  }
+  return result;
+}
+
+// ============ PPT 显示（用 PowerPoint 渲染每页为 PNG 图片，非 PDF；失败则退回内置解析） ============
+function getPptScriptPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'scripts', 'convert-ppt-to-images.ps1');
+  }
+  return path.join(__dirname, 'scripts', 'convert-ppt-to-images.ps1');
+}
+
+function getPptImageCacheDir(pptPath) {
+  const hash = require('crypto').createHash('md5').update(pptPath).digest('hex');
+  return path.join(getAttachmentsDir(), 'ppt-cache', hash);
+}
+
+let _pptAvailable = null;
+
+function checkPowerPointInstalled() {
+  if (_pptAvailable !== null) return _pptAvailable;
+  try {
+    const result = require('child_process').execSync(
+      'powershell -Command "try { $p = New-Object -ComObject PowerPoint.Application; $p.Quit(); Write-Output OK } catch { Write-Output NO }"',
+      { timeout: 20000, encoding: 'utf-8' }
+    );
+    _pptAvailable = result.trim() === 'OK';
+    return _pptAvailable;
+  } catch (e) {
+    _pptAvailable = false;
+    return false;
+  }
+}
+
+// 用 PowerPoint 把每页渲染为 PNG（保持表格/图片/布局），返回排序的图片路径数组
+async function convertPptToImages(pptPath) {
+  const cacheDir = getPptImageCacheDir(pptPath);
+  const scriptPath = getPptScriptPath();
+  return new Promise((resolve, reject) => {
+    execFile('powershell', [
+      '-ExecutionPolicy', 'Bypass',
+      '-File', scriptPath,
+      '-InputFile', pptPath,
+      '-OutputDir', cacheDir
+    ], { timeout: 300000 }, (error, stdout, stderr) => {
+      if (error) { reject(new Error('PowerShell 执行失败: ' + error.message)); return; }
+      if (stdout.trim() === 'SUCCESS') {
+        const images = fs.readdirSync(cacheDir)
+          .filter(f => /^slide_\d+\.png$/i.test(f))
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+          .map(f => path.join(cacheDir, f).replace(/\\/g, '/'));
+        if (images.length === 0) reject(new Error('未生成 PPT 页面图片'));
+        else resolve(images);
+      } else {
+        reject(new Error('PPT 渲染失败: ' + stdout.trim()));
       }
     });
   });
@@ -783,6 +927,43 @@ function setupIPC() {
   });
   ipcMain.handle('create-note', (e, { title, content, categoryId, template, originalFile }) => createNote(title, content, categoryId, template, originalFile));
   ipcMain.handle('get-note-content', (e, id) => getNoteContent(id));
+  // 大文件预览：超过 maxBytes 只读前段，避免整文经 IPC 传回导致卡顿
+  ipcMain.handle('get-note-content-preview', (e, id, maxBytes) => {
+    const noteFile = path.join(getNotesDir(), `${id}.md`);
+    try {
+      const size = fs.statSync(noteFile).size;
+      const limit = (maxBytes > 0 ? maxBytes : 5 * 1024 * 1024);
+      if (size > limit) {
+        const fd = fs.openSync(noteFile, 'r');
+        const buf = Buffer.alloc(limit);
+        const read = fs.readSync(fd, buf, 0, limit, 0);
+        fs.closeSync(fd);
+        return { content: buf.toString('utf-8', 0, read), truncated: true, totalBytes: size };
+      }
+      return { content: fs.readFileSync(noteFile, 'utf-8'), truncated: false, totalBytes: size };
+    } catch (err) {
+      return { content: '', truncated: false, totalBytes: 0 };
+    }
+  });
+  // 流式读取：每次只读 offset 起的 length 字节，供渲染层分段加载大文件
+  ipcMain.handle('get-note-chunk', (e, id, offsetRaw, length) => {
+    const noteFile = path.join(getNotesDir(), `${id}.md`);
+    const offset = offsetRaw || 0;
+    try {
+      const total = fs.statSync(noteFile).size;
+      const len = Math.min(length || 50 * 1024, Math.max(total - offset, 0));
+      if (len <= 0) return { content: '', offset, nextOffset: offset, totalBytes: total, done: true };
+      const fd = fs.openSync(noteFile, 'r');
+      const buf = Buffer.alloc(len);
+      const read = fs.readSync(fd, buf, 0, len, offset);
+      fs.closeSync(fd);
+      return {
+        content: buf.toString('utf-8', 0, read),
+        offset, nextOffset: offset + read, totalBytes: total,
+        done: (offset + read) >= total
+      };
+    } catch (err) { return { content: '', offset, nextOffset: offset, totalBytes: 0, done: true }; }
+  });
   ipcMain.handle('update-note-content', (e, { id, content }) => { updateNoteContent(id, content); return true; });
   ipcMain.handle('delete-note', (e, { id, permanent }) => deleteNote(id, permanent));
   ipcMain.handle('restore-note', (e, id) => restoreNote(id));
@@ -941,6 +1122,27 @@ function setupIPC() {
           return { type: 'error', content: 'Word 文件预览失败：' + e.message };
         }
       }
+    } else if (['.ppt', '.pptx'].includes(ext)) {
+      // PPT：优先用 PowerPoint 渲染每页为图片（忠实还原表格/图片/布局，非 PDF）；失败则退回内置解析
+      try {
+        if (ext === '.pptx' && checkPowerPointInstalled()) {
+          try {
+            const images = await convertPptToImages(fullPath);
+            return { type: 'ppt', images };
+          } catch (e) {
+            // 渲染失败 → 退回内置 .pptx 解析
+            const slides = await parsePptx(fullPath);
+            return { type: 'ppt', slides };
+          }
+        }
+        if (ext === '.pptx') {
+          const slides = await parsePptx(fullPath);
+          return { type: 'ppt', slides };
+        }
+        return { type: 'error', content: '暂不支持解析旧版二进制 .ppt 格式，请将文件另存为 .pptx 后重试，或使用外部程序打开' };
+      } catch (e) {
+        return { type: 'error', content: 'PPT 预览失败：' + e.message };
+      }
     } else if (['.xlsx', '.xls'].includes(ext)) {
       // Excel - 使用工作线程解析为结构化数据，应用内用 Excel 交互表格组件展示
       try {
@@ -1051,9 +1253,10 @@ function setupIPC() {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: '所有支持的格式', extensions: ['txt', 'rtf', 'html', 'htm', 'md', 'doc', 'docx', 'pdf', 'xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'bmp', 'gif'] },
+        { name: '所有支持的格式', extensions: ['txt', 'rtf', 'html', 'htm', 'md', 'doc', 'docx', 'ppt', 'pptx', 'pdf', 'xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'bmp', 'gif'] },
         { name: '文本文档', extensions: ['txt', 'rtf', 'md'] },
         { name: 'Word文档', extensions: ['doc', 'docx'] },
+        { name: 'PPT演示文稿', extensions: ['ppt', 'pptx'] },
         { name: 'PDF文档', extensions: ['pdf'] },
         { name: 'Excel表格', extensions: ['xlsx', 'xls', 'csv'] },
         { name: 'HTML文档', extensions: ['html', 'htm'] },
@@ -1073,7 +1276,7 @@ function setupIPC() {
   });
 
   // 支持的导入扩展名（文件夹扫描时使用）
-  const supportedImportExts = ['.txt', '.rtf', '.html', '.htm', '.md', '.doc', '.docx', '.pdf', '.xlsx', '.xls', '.csv', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
+  const supportedImportExts = ['.txt', '.rtf', '.html', '.htm', '.md', '.doc', '.docx', '.ppt', '.pptx', '.pdf', '.xlsx', '.xls', '.csv', '.png', '.jpg', '.jpeg', '.bmp', '.gif'];
 
   // 递归扫描文件夹，返回一幕平铺的 { path, relPath }，relPath = 根文件夹名称/子文件/文件.ext，保留层级
   function scanFolderRecursive(rootPath, supportedExts) {

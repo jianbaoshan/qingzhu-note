@@ -499,43 +499,89 @@ const App = window.App = {
 
     if (!window.electronAPI) return;
 
-    const content = await window.electronAPI.getNoteContent(noteId);
     const note = this.state.notes.find(n => n.id === noteId);
     if (!note) return;
 
-    // 内容过大时（>100KB），跳过 markdown 渲染，防止卡死
-    const MAX_CONTENT_SIZE = 100 * 1024;
-    if (content && content.length > MAX_CONTENT_SIZE) {
-      this.hideReadonlyView();
-      const editor = document.getElementById('markdown-editor');
-      const preview = document.getElementById('markdown-preview');
-      if (editor) {
-        editor.value = '';
-        this.state.isDirty = false;
-        this.updateStatusBar();
-      }
-      if (preview) {
-        preview.innerHTML = `<div class="file-preview-error">该笔记内容过大（${(content.length / 1024).toFixed(1)}KB），无法正常显示</div>`;
-      }
-      return;
-    }
+    // 大文件懒加载状态：只在需要编辑时才拉取全文
+    this._hugeNoteId = noteId;
+    this._hugeFullLoaded = false;
+
+    // 优先取预览（大文件主进程只读前 5MB，避免整文 IPC 回传卡顿）
+    const prv = await window.electronAPI.getNoteContentPreview(noteId, 5 * 1024 * 1024);
+    const content = prv.content || '';
 
     if (note.originalFile) {
       this.showReadonlyView(note);
-    } else {
-      this.hideReadonlyView();
-      // 更新编辑器
-      const editor = document.getElementById('markdown-editor');
-      const preview = document.getElementById('markdown-preview');
-      if (editor) {
-        editor.value = content;
-        this.state.isDirty = false;
-        this.updateStatusBar();
-        this.renderMarkdown(content);
-      }
-      // 默认切换到预览模式
-      this.switchToPane('preview');
+      return;
     }
+
+    this.hideReadonlyView();
+    const editor = document.getElementById('markdown-editor');
+    if (prv.truncated) {
+      // 大文件：按 100KB 分块流式加载，边读边追加渲染，避免一次性渲染整篇卡顿
+      this.state.isDirty = false;
+      // 流式令牌：切换笔记/文件时中止上次加载
+      const token = (this._streamToken = (this._streamToken || 0) + 1);
+      const preview = document.getElementById('markdown-preview');
+      if (editor) { editor.value = ''; }
+      this.updateStatusBar();
+      this.switchToPane('preview');
+      if (preview) {
+        preview.innerHTML = '<p class="qzn-stream-placeholder" style="color:var(--text-tertiary);">加载中…</p>';
+      }
+
+      const CHUNK = 50 * 1024; // 50KB/次
+      const total = prv.totalBytes;
+      const sizeMB = (total / (1024 * 1024)).toFixed(1);
+      const self = this;
+      let offset = 0;
+
+      const stream = async () => {
+        // 已切换到其它内容，中止本次流式加载
+        if (token !== this._streamToken || this.state.currentNoteId !== noteId) return;
+        let r;
+        try {
+          r = await window.electronAPI.getNoteChunk(noteId, offset, CHUNK);
+        } catch (e) {
+          if (preview) preview.innerHTML = '<p style="color:var(--danger);">流式读取失败</p>';
+          return;
+        }
+        if (r && r.content) {
+          let html = '';
+          try { html = await self.renderMarkdownWithMarked(r.content); } catch (e) { html = ''; }
+          if (preview) {
+            const ph = preview.querySelector('.qzn-stream-placeholder');
+            if (ph) ph.remove();
+            const frag = document.createElement('div');
+            frag.innerHTML = html;
+            preview.appendChild(frag);
+          }
+          offset = r.nextOffset;
+        }
+        if (r && r.done) {
+          if (preview) {
+            const done = document.createElement('div');
+            done.style.cssText = 'margin-top:24px;color:var(--text-tertiary);font-size:12px;';
+            done.textContent = `[流式加载完成，共 ${sizeMB}MB]。切到「编辑」页可查看/复制完整内容。`;
+            preview.appendChild(done);
+          }
+          return;
+        }
+        setTimeout(stream, 0); // 继续下一段
+      };
+      stream();
+      return;
+    }
+
+    // 普通大小：直接加载
+    if (editor) {
+      editor.value = content;
+      this.state.isDirty = false;
+      this.updateStatusBar();
+      this.renderMarkdown(content);
+    }
+    // 默认切换到预览模式
+    this.switchToPane('preview');
   },
 
   // ============ 导入文件只读视图 ============
@@ -589,6 +635,8 @@ const App = window.App = {
     if (banner) {
       if (['doc', 'docx'].includes(ext)) {
         banner.textContent = '此笔记为导入文件，已通过 Word 转换为 PDF 预览，保留原始格式';
+      } else if (['ppt', 'pptx'].includes(ext)) {
+        banner.textContent = '此笔记为导入文件，已直接解析 PPT，按幻灯片格式显示';
       } else if (['xlsx', 'xls'].includes(ext)) {
         // Excel 以原始表格格式交互预览，不显示导入提示
         if (bannerRow) bannerRow.style.display = 'none';
@@ -610,6 +658,8 @@ const App = window.App = {
       iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="currentColor" font-family="sans-serif">XL</text></svg>`;
     } else if (['doc', 'docx'].includes(ext)) {
       iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="currentColor" font-family="sans-serif">W</text></svg>`;
+    } else if (['ppt', 'pptx'].includes(ext)) {
+      iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-size="13" font-weight="bold" fill="currentColor" font-family="sans-serif">PPT</text></svg>`;
     } else if (['html', 'htm'].includes(ext)) {
       iconEl.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor" font-family="sans-serif">HTML</text></svg>`;
     } else {
@@ -636,6 +686,93 @@ const App = window.App = {
             console.error('[PDF] PDF.js 渲染失败:', err);
             previewEl.innerHTML = `<div class="file-preview-error">PDF 预览失败：${(err && err.message) || err}</div>`;
           }
+        } else if (result.type === 'ppt') {
+          // PPT：优先展示 PowerPoint 导出的页面图片（尽量还原视觉），无图则展示解析出的文本
+          previewEl.innerHTML = '';
+          previewEl.style.display = 'block';
+          if (fileInfo) fileInfo.style.display = 'none';
+          const host = document.createElement('div');
+          host.style.cssText = 'display:flex;flex-direction:column;gap:20px;padding:20px;max-width:1000px;margin:0 auto;';
+          if (result.images && result.images.length) {
+            // 幻灯片图片：去掉固定最大宽度，随面板可用宽度自适应
+            host.style.maxWidth = 'none';
+            host.style.margin = '0';
+            // 幻灯片图片：支持滚轮缩放 + 拖拽/滚动查看
+            const zoomHost = document.createElement('div');
+            zoomHost.style.cssText = 'position:relative;overflow:auto;max-height:calc(100vh - 140px);';
+            zoomHost.className = 'ppt-zoom-host';
+            const toolbar = document.createElement('div');
+            toolbar.style.cssText = 'position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;width:max-content;';
+            const mkBtn = (txt, cb) => {
+              const b = document.createElement('button');
+              b.textContent = txt;
+              b.style.cssText = 'padding:2px 10px;font-size:13px;cursor:pointer;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);';
+              b.onclick = cb;
+              return b;
+            };
+            let pptZoom = 1;
+            const pct = document.createElement('span');
+            pct.style.cssText = 'min-width:52px;text-align:center;font-size:13px;color:var(--text-secondary);';
+            const applyZoom = () => {
+              slides.forEach(img => {
+                img.style.width = (pptZoom * 100) + '%';
+                if (pptZoom !== 1) { img.style.maxWidth = 'none'; img.style.margin = '0 0 16px'; }
+                else { img.style.maxWidth = '100%'; img.style.margin = '0 auto 16px'; }
+              });
+              pct.textContent = Math.round(pptZoom * 100) + '%';
+            };
+            const adjust = (f) => { pptZoom = Math.min(5, Math.max(0.25, pptZoom * f)); applyZoom(); };
+            toolbar.appendChild(mkBtn('－', () => adjust(0.8)));
+            toolbar.appendChild(pct);
+            toolbar.appendChild(mkBtn('＋', () => adjust(1.2)));
+            toolbar.appendChild(mkBtn('复位', () => { pptZoom = 1; applyZoom(); }));
+            const hint = document.createElement('span');
+            hint.textContent = 'Ctrl+滚轮缩放';
+            hint.style.cssText = 'font-size:12px;color:var(--text-tertiary);';
+            toolbar.appendChild(hint);
+            zoomHost.appendChild(toolbar);
+            const slides = result.images.map((src, idx) => {
+              const img = document.createElement('img');
+              img.src = 'file:///' + src;
+              img.alt = '第' + (idx + 1) + '页';
+              img.style.cssText = 'display:block;max-width:100%;height:auto;border:1px solid var(--border);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12);margin:0 auto 16px;cursor:grab;flex:0 0 auto;';
+              img.loading = 'lazy';
+              zoomHost.appendChild(img);
+              return img;
+            });
+            zoomHost.addEventListener('wheel', (e) => {
+              if (!e.ctrlKey) return; // 普通滚动由浏览器处理
+              e.preventDefault();
+              adjust(e.deltaY < 0 ? 1.1 : 0.9);
+            }, { passive: false });
+            host.appendChild(zoomHost);
+            applyZoom();
+          } else if (result.slides && result.slides.length) {
+            result.slides.forEach((slide) => {
+              const card = document.createElement('div');
+              card.style.cssText = 'border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg);';
+              if (slide.images && slide.images.length) {
+                slide.images.forEach(src => {
+                  const img = document.createElement('img');
+                  img.src = src;
+                  img.style.cssText = 'display:block;max-width:100%;height:auto;margin:0 auto;';
+                  card.appendChild(img);
+                });
+              }
+              if (slide.paras && slide.paras.length) {
+                const body = document.createElement('div');
+                body.style.cssText = 'padding:14px 16px;font-size:14px;line-height:1.8;white-space:pre-wrap;word-break:break-word;';
+                body.textContent = slide.paras.join('\n');
+                card.appendChild(body);
+              }
+              const foot = document.createElement('div');
+              foot.style.cssText = 'padding:8px 16px;border-top:1px solid var(--border);color:var(--text-tertiary);font-size:12px;';
+              foot.textContent = '第 ' + slide.index + ' 页';
+              card.appendChild(foot);
+              host.appendChild(card);
+            });
+          }
+          previewEl.appendChild(host);
         } else if (result.type === 'excel_data') {
           // Excel：用 x-spreadsheet 交互表格组件展示（应用内 Excel 格式）
           const ROWS = 2000;
@@ -1299,6 +1436,14 @@ const App = window.App = {
         editPane.style.flex = '1';
         previewPane.style.display = 'none';
         if (divider) divider.style.display = 'none';
+        // 大文件懒加载：首次切到「编辑」时才拉取全文填入编辑器
+        if (this._hugeNoteId && !this._hugeFullLoaded) {
+          this._hugeFullLoaded = true;
+          const editor = document.getElementById('markdown-editor');
+          window.electronAPI.getNoteContent(this._hugeNoteId).then(full => {
+            if (editor) editor.value = full || '';
+          });
+        }
       } else if (pane === 'preview') {
         editPane.style.display = 'none';
         previewPane.style.flex = '1';

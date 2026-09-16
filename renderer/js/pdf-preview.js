@@ -519,7 +519,7 @@
         'background:rgba(128,128,128,.18);border:1px solid rgba(128,128,128,.35);border-radius:6px;}',
         '.pdfjs-outline-toggle:hover{background:rgba(128,128,128,.3);}',
         '.pdfjs-outline{position:fixed;top:44px;left:8px;z-index:50;width:260px;max-width:60%;',
-        'max-height:70%;overflow:auto;padding:6px;font-size:13px;line-height:1.4;color:inherit;',
+        'max-height:70vh;overflow:auto;padding:6px;font-size:13px;line-height:1.4;color:inherit;',
         'background:rgba(250,250,250,.92);border:1px solid rgba(128,128,128,.35);border-radius:8px;',
         'box-shadow:0 4px 16px rgba(0,0,0,.25);}',
         '.pdfjs-outline{padding-right:16px;}/* 右侧预留拖拽手柄区域 */',
