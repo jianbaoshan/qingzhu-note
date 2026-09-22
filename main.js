@@ -405,16 +405,25 @@ async function importFile(filePath, categoryId, titleOverride) {
     content = `*[导入失败: ${e.message}]*\n\n原始文件: ${filePath}`;
   }
 
-  // 检查是否已有同名导入文件，有则更新现有笔记，无则创建新笔记
+  // 检查是否已有同名导入文件：替换模式（更新一篇，并合并历史重复项）
   if (originalFile) {
     const meta = loadNotesMeta();
-    const existing = meta.notes.find(n => (n.originalFile === originalFile || n.originalFile === originalFile.replace(/\\/g, '/')) && !n.isDeleted);
+    const norm = originalFile.replace(/\\/g, '/');
+    const matches = meta.notes.filter(n => (n.originalFile === originalFile || n.originalFile === norm) && !n.isDeleted);
+    const existing = matches[0];
     if (existing) {
       const noteFile = path.join(getNotesDir(), `${existing.id}.md`);
       fs.writeFileSync(noteFile, content, 'utf-8');
       existing.updatedAt = new Date().toISOString();
-      // 重新导入到其他分类时，将已有笔记移动/关联到本次导入的分类，避免“导入成功但在目标文件夹看不到”
+      // 移动到本次导入的分类，避免“导入成功但在目标文件夹看不到”
       existing.categoryId = categoryId || existing.categoryId;
+      // 合并重复项：删除同 originalFile 的其它笔记，只保留一篇
+      for (const dup of matches.slice(1)) {
+        const dupFile = path.join(getNotesDir(), `${dup.id}.md`);
+        if (fs.existsSync(dupFile)) { try { fs.unlinkSync(dupFile); } catch (e) { /* 忽略 */ } }
+        const idx = meta.notes.indexOf(dup);
+        if (idx !== -1) meta.notes.splice(idx, 1);
+      }
       saveNotesMeta(meta);
       return existing;
     }
