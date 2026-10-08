@@ -408,8 +408,15 @@ async function importFile(filePath, categoryId, titleOverride) {
   // 检查是否已有同名导入文件：替换模式（更新一篇，并合并历史重复项）
   if (originalFile) {
     const meta = loadNotesMeta();
-    const norm = originalFile.replace(/\\/g, '/');
-    const matches = meta.notes.filter(n => (n.originalFile === originalFile || n.originalFile === norm) && !n.isDeleted);
+    // 归一化匹配键：取原文件相对路径的 basename，并去掉历史版本附加的时间戳前缀（`<ms>_`），
+    // 统一旧数据（带时间戳）与现版本（不带）的同一文件，实现替换/去重。
+    const cleanBase = (s) => {
+      if (!s) return '';
+      const b = String(s).replace(/\\/g, '/').split('/').pop() || '';
+      return b.replace(/^\d+_/, '').toLowerCase();
+    };
+    const key = cleanBase(originalFile);
+    const matches = meta.notes.filter(n => !n.isDeleted && n.originalFile && cleanBase(n.originalFile) === key);
     const existing = matches[0];
     if (existing) {
       const noteFile = path.join(getNotesDir(), `${existing.id}.md`);
