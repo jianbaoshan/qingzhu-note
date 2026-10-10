@@ -1089,11 +1089,13 @@ function setupIPC() {
         return { type: 'error', content: 'PDF 文件读取失败：' + e.message };
       }
     } else if (['.html', '.htm'].includes(ext)) {
-      // HTML - 读取文件内容，由渲染进程用 srcdoc 嵌入（确保同源可访问 contentDocument）
+      // HTML - 直接返回原文件地址 + 内容，渲染进程优先用 iframe.src 按原样渲染（与浏览器打开完全一致），
+      // 兜底再用 srcdoc 内嵌（确保同源可访问 contentDocument 做缩放/主题注入）。
+      const toFileUrl = (p) => 'file:///' + String(p).split(/[\\/]+/).filter(Boolean).map(encodeURIComponent).join('/');
       try {
         const htmlContent = fs.readFileSync(fullPath, 'utf-8');
         const dir = path.dirname(fullPath).replace(/\\/g, '/');
-        return { type: 'html_file', content: htmlContent, baseDir: dir };
+        return { type: 'html_file', content: htmlContent, baseDir: dir, url: toFileUrl(fullPath) };
       } catch (e) {
         return { type: 'error', content: 'HTML 文件读取失败：' + e.message };
       }

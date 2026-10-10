@@ -820,9 +820,11 @@ const App = window.App = {
             host.innerHTML = '<div style="padding:40px;text-align:center;color:#888">表格组件加载失败</div>';
           }
         } else if (result.type === 'html_file') {
-          // HTML：用 srcdoc 嵌入（确保同源，可访问 contentDocument），带缩放工具栏
+          // HTML：优先用 iframe.src 直接加载原文件（与浏览器打开完全一致）；无 url 时用 srcdoc 兜底
           const zoomLevel = this._currentZoom || 100;
-          const srcdocContent = `<base href="file:///${result.baseDir}/">${result.content}`;
+          const srcAttr = result.url
+            ? `src="${result.url}"`
+            : `srcdoc="${`<base href="file:///${result.baseDir}/">${result.content}`.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}"`;
           previewEl.innerHTML = `
             <div class="readonly__zoom-toolbar" style="margin-bottom:8px">
               <button class="readonly__zoom-btn" data-zoom-action="out" title="缩小">−</button>
@@ -830,7 +832,7 @@ const App = window.App = {
               <button class="readonly__zoom-btn" data-zoom-action="in" title="放大">+</button>
               <button class="readonly__zoom-btn readonly__zoom-reset" data-zoom-action="reset" title="重置缩放">100%</button>
             </div>
-            <iframe srcdoc="${srcdocContent.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" class="pdf-viewer" id="html-preview-iframe" style="zoom:${zoomLevel / 100}"></iframe>`;
+            <iframe ${srcAttr} class="pdf-viewer" id="html-preview-iframe" style="zoom:${zoomLevel / 100}"></iframe>`;
           previewEl.style.display = 'block';
           if (fileInfo) fileInfo.style.display = 'none';
           const iframe = previewEl.querySelector('#html-preview-iframe');
