@@ -670,6 +670,9 @@ const App = window.App = {
     if (window.electronAPI) {
       const result = await window.electronAPI.getFilePreview(relativePath);
       if (result) {
+        // 在 result 作用域内记录实际渲染的预览类型，供搜索分支判断。
+        // 若放到下方（result 已脱离作用域）会抛 ReferenceError，导致 _currentPreviewType 永不生效。
+        this._currentPreviewType = result.type === 'pdf' ? 'pdf' : 'html';
         if (result.type === 'image') {
           // 图片：直接显示
           previewEl.innerHTML = `<img src="file:///${result.content}" alt="${fileName}">`;
@@ -944,9 +947,6 @@ const App = window.App = {
     if (downloadBtn) {
       downloadBtn._originalFile = relativePath;
     }
-
-    // 记录当前预览文件类型（用于搜索功能）
-    this._currentPreviewType = ext === 'pdf' ? 'pdf' : 'html';
 
     // 切换文件时清除之前的页面内搜索高亮和会话
     if (window.electronAPI?.stopFindInPage) window.electronAPI.stopFindInPage();
@@ -1998,19 +1998,36 @@ const App = window.App = {
     // HTML / Word / Excel：使用 iframe.contentWindow.find() 或 window.find()
     const previewEl = document.getElementById('readonly-preview');
     if (!previewEl) return;
+    const countMatches = () => {
+      try {
+        let hay = '';
+        const f = previewEl.querySelector('iframe');
+        if (f && f.contentDocument && f.contentDocument.body) hay = f.contentDocument.body.innerText;
+        else hay = previewEl.innerText || '';
+        if (!hay) return 0;
+        return hay.split(text).length - 1;
+      } catch (_) { return -1; }
+    };
+    const updateCount = (found) => {
+      const sc = document.getElementById('search-count');
+      if (!sc) return;
+      if (!found) { sc.textContent = '未找到'; return; }
+      const n = countMatches();
+      sc.textContent = n > 0 ? `共 ${n} 处` : '已定位';
+    };
     const iframe = previewEl.querySelector('iframe');
     if (iframe) {
       try {
         const win = iframe.contentWindow;
         if (win && typeof win.find === 'function') {
-          win.find(text, false, backward, true, false, true, false);
+          updateCount(win.find(text, false, backward, true, false, true, false));
           return;
         }
       } catch (_) { /* 忽略 */ }
     }
     // 搜索父文档（Word/Excel HTML 预览）
     try {
-      window.find(text, false, backward, true, false, true, false);
+      updateCount(window.find(text, false, backward, true, false, true, false));
     } catch (_) { /* 忽略 */ }
   },
 
@@ -2049,7 +2066,7 @@ const App = window.App = {
       });
     }
 
-    // 输入时实时搜索（仅非 PDF 文件）
+    // 输入时只缓存文本，不实时搜索；统一在按下 Enter（或上/下健、按钮）后才开始搜索
     searchInput.addEventListener('input', () => {
       this._currentSearchText = searchInput.value;
       if (!searchInput.value) {
@@ -2057,13 +2074,7 @@ const App = window.App = {
         if (window.electronAPI?.stopFindInPage) window.electronAPI.stopFindInPage();
         return;
       }
-      if (this._currentPreviewType === 'pdf') {
-        // PDF 文件仅在按下 Enter 后搜索，避免输入过程中频繁调用 findInPage
-        searchCount.textContent = '';
-        return;
-      }
-      this._searchInFile(searchInput.value, false, false);
-      searchCount.textContent = '已定位';
+      if (searchCount) searchCount.textContent = '';
     });
 
     // 全局函数供 HTML onkeydown 调用（解决事件绑定失效问题）
@@ -2090,6 +2101,12 @@ const App = window.App = {
         if (app._currentPreviewType === 'pdf' && window.PDFPreview) {
           e.preventDefault();
           if (!app._currentSearchText) return false;
+          app._searchInFile(app._currentSearchText, e.key === 'ArrowUp', true);
+          return false;
+        }
+        // 非 PDF（docx/html/word/excel）：用 window.find 反向跳转
+        if (app._currentSearchText) {
+          e.preventDefault();
           app._searchInFile(app._currentSearchText, e.key === 'ArrowUp', true);
           return false;
         }
