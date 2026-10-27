@@ -256,7 +256,7 @@ async function convertPdf(filePath) {
   } catch (e) { return `*[PDF 转换失败: ${e.message}]*`; }
 }
 
-async function convertHtml(content) {
+function convertHtml(content) {
   return content.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 

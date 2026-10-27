@@ -1179,7 +1179,10 @@ const App = window.App = {
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
     if (failCount > 0) {
-      this.showToast(`导入完成：${successCount} 成功，${failCount} 失败`, 'warning');
+      results.filter(r => !r.success).forEach(f => console.error('[导入失败]', f.file, '=>', f.error));
+      const first = results.find(r => !r.success);
+      const detail = first ? `，${first.error || '未知错误'}` : '';
+      this.showToast(`导入完成：${successCount} 成功，${failCount} 失败${detail}`, 'warning');
     } else if (results.length > 0) {
       this.showToast(`成功导入 ${successCount} 个文件`, 'success');
     } else {
@@ -1215,7 +1218,11 @@ const App = window.App = {
     const successCount = importResults.filter(r => r.success).length;
     const failCount = importResults.filter(r => !r.success).length;
     if (failCount > 0) {
-      this.showToast(`导入完成：${successCount} 成功，${failCount} 失败`, 'warning');
+      // 打印失败详情到控制台，便于定位具体文件与原因
+      importResults.filter(r => !r.success).forEach(f => console.error('[导入失败]', f.file, '=>', f.error));
+      const first = importResults.find(r => !r.success);
+      const detail = first ? `，${first.error || '未知错误'}` : '';
+      this.showToast(`导入完成：${successCount} 成功，${failCount} 失败${detail}`, 'warning');
     } else {
       this.showToast(`成功导入 ${successCount} 个文件`, 'success');
     }
